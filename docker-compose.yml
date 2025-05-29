@@ -1,0 +1,52 @@
+services:
+  ingest:
+    profiles:
+      - ingest
+    build: ./ingest
+    command: python ingest.py \
+              --catalog /mnt/raw/MyCatalog.lrcat \
+              --out_csv /mnt/dataset/sliders.csv \
+              --previews_dir /mnt/previews
+    volumes:
+      - ./data/raw:/mnt/raw:ro
+      - ./data/previews:/mnt/previews
+      - ./data/dataset:/mnt/dataset
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  train:
+    profiles:
+      - train
+    build:
+      context: .
+      dockerfile: ./train/Dockerfile
+    command: python train.py \
+              --csv /mnt/dataset/sliders.csv \
+              --previews /mnt/previews \
+              --out_model /mnt/models/model.pt
+    volumes:
+      - ./data/previews:/mnt/previews
+      - ./data/dataset:/mnt/dataset
+      - ./data/models:/mnt/models
+
+  serve:
+    build:
+      context: .
+      dockerfile: ./serve/Dockerfile
+    command: uvicorn app:app --host 0.0.0.0 --port 8000
+    volumes:
+      - ./data/models:/mnt/models:ro
+      - ./ui/dist:/app/ui/dist:ro
+    ports:
+      - "8000:8000"
+    environment:
+      - MODEL_PATH=/mnt/models/model.pt   # optional, default matches
+      - SLIDER_LIST=Exposure2012,Contrast2012,Shadows2012,Highlights2012,Whites2012,Blacks2012,Vibrance,Saturation
+
+  # ui:
+  #   build: ./ui
+  #   # Electron waits for serve:8000
+  #   environment:
+  #     - API_URL=http://localhost:8000
+  #   network_mode: host     # desktop app talks to serve directly
+  #   depends_on: [serve]

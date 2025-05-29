@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+
+# Node / frontend
+node_modules/
+dist/
+
+# Data folders (you can keep dataset & models if you want)
+data/raw/
+data/previews/
+
+# Media files
+.DS_Store
+
+# Environment files
+.env
+
+# Docker
+*.log
+EOF
