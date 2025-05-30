@@ -1,7 +1,0 @@
-fastapi
-uvicorn[standard]
-torch==2.7.0
-torchvision==0.22.0
-pillow
-numpy
-python-multipart
