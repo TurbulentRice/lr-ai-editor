@@ -36,6 +36,7 @@ import torchvision.transforms as T
 from tqdm import tqdm
 from common.model import ResNetRegressor
 
+torch.classes.__path__ = []  # Neutralizes the path inspection
 
 # --------------------------------------------------------------------------- #
 # Dataset

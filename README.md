@@ -1,28 +1,43 @@
-Lightroom AI Editor
+# Lightroom AI Editor
+
+Teach a pre-trained AI model to edit like you with this tiny [Streamlit](https://streamlit.io/) app that runs locally and opens in your browser. Drag-and-drop images and Lightroom catalog files, train and save models, and create predictive edits. 
+
+## Requirements
+
+- Python 3.9+
+
+To install dependencies, run one of the following:
+```
+# UNIX-like environments
+./run.sh
+
+# Cross-platform Python launcher
+python run.py
+```
 
 ## Ingest
 
-```sh
-docker-compose build ingest
-docker-compose up -d --build ingest [-h] [--catalog CATALOG] [--out_csv OUT_CSV] [--previews_dir PREVIEWS_DIR]
-```
+Easy uploading and previewing of metadata files, images, and predictive edits.
 
-## Train
+## [Train](./train/)
+
+This is leftover from when training was it's own service, and still has some useful stuff so leaving here for now.
 
 ```sh
 docker-compose build train # add --build-arg BASE_IMAGE=... for GPU
-docker-compose up train [-h] --csv CSV --previews PREVIEWS --out_model OUT_MODEL [--epochs EPOCHS] [--batch_size BATCH_SIZE] [--lr LR] []  
+docker-compose up -d train [-h] --csv CSV --previews PREVIEWS --out_model OUT_MODEL [--epochs EPOCHS] [--batch_size BATCH_SIZE] [--lr LR] []  
 ```
 
-## Notes
-•	Volumes - shared ./data folder keeps artefacts on your host so containers stay disposable.
-•	GPU - remove the devices stanza if you only have CPU.
+## Lightroom Tools
 
-## Serve
+Using [Lightroom-SQL-tools](https://github.com/fdenivac/Lightroom-SQL-tools) to handle extracting data from `.lrcat` files.
 
-```sh
-docker-compose up --build serve --build-arg BASE_IMAGE=pytorch/pytorch:2.2.0-cuda12.1-cudnn8-runtime
-curl -F image=@/path/to/test.jpg "http://localhost:8000/predict"
-# or request an XMP:
-curl -o out.xmp -F image=@test.jpg "http://localhost:8000/predict?return_xmp=1"
-```
+See the [full .lrcat table schema here](./lrcat_schema.sql).
+
+From my digging, the tables of interest are:
+1.	`Adobe_AdditionalMetadata`
+  - Column: xmp (TEXT) — contains the full XMP side-car XML for each image.
+2.	`Adobe_imageDevelopSettings`
+  - Columns: numeric fields like grayscale, hasPointColor, but not slider values (Lightroom moved to XMP). You can still pick up a handful of basic flags here, but the heavy lifting lives in the XMP.
+3.	`AgHarvestedExifMetadata`
+  - Columns: aperture, shutterSpeed, isoSpeedRating, cameraModelRef, dateYear/dateMonth/dateDay, etc.
