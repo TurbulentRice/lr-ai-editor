@@ -7,9 +7,8 @@ __pycache__/
 node_modules/
 dist/
 
-# Data folders (you can keep dataset & models if you want)
-data/raw/
-data/previews/
+# Data folders
+data/*/**
 
 # Media files
 .DS_Store
