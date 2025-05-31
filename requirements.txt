@@ -5,5 +5,5 @@ numpy
 python-multipart
 pandas
 git+https://github.com/fdenivac/Lightroom-SQL-tools
-tqdm
 streamlit
+python-xmp-toolkit

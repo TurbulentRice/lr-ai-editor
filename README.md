@@ -1,12 +1,17 @@
 # Lightroom AI Editor
 
-Teach a pre-trained AI model to edit like you with this tiny [Streamlit](https://streamlit.io/) app that runs locally and opens in your browser. Drag-and-drop images and Lightroom catalog files, train and save models, and create predictive edits. 
+Teach a pre-trained AI model to edit photos like you with this locally-hosted [Streamlit](https://streamlit.io/) app that opens in your browser. Drag-and-drop images and Lightroom catalog files, train and save models, and create predictive XMP data for images.
+
+Parses [Adobe XMP](https://www.adobe.com/products/xmp.html) data from edits in your catalogs, and trains a model based on camera raw sliders, with the goal of creating XMP side-car files for new images.
+
+![example.png](data/example.png)
 
 ## Requirements
 
 - Python 3.9+
+- [Exempi 2.2.0+](https://libopenraw.freedesktop.org/exempi/) (for [Python XMP Toolkit](https://python-xmp-toolkit.readthedocs.io/en/latest/installation.html#requirements)) - installed by start script
 
-To install dependencies, run one of the following:
+Run the start scrpt to initialize venv, install all dependencies, start the app, and open the UI:
 ```
 # UNIX-like environments
 ./run.sh
@@ -15,18 +20,13 @@ To install dependencies, run one of the following:
 python run.py
 ```
 
-## Ingest
+## [Ingest](./ingest/)
 
-Easy uploading and previewing of metadata files, images, and predictive edits.
+Extract image data from Lightroom catalog `.lrcat` files
 
 ## [Train](./train/)
 
-This is leftover from when training was it's own service, and still has some useful stuff so leaving here for now.
-
-```sh
-docker-compose build train # add --build-arg BASE_IMAGE=... for GPU
-docker-compose up -d train [-h] --csv CSV --previews PREVIEWS --out_model OUT_MODEL [--epochs EPOCHS] [--batch_size BATCH_SIZE] [--lr LR] []  
-```
+Train a model based on previously ingested slider data.
 
 ## Lightroom Tools
 
