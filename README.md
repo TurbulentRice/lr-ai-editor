@@ -1,8 +1,6 @@
 # Lightroom AI Editor
 
-Teach a pre-trained AI model to edit photos like you with this locally-hosted [Streamlit](https://streamlit.io/) app that opens in your browser. Drag-and-drop images and Lightroom catalog files, train and save models, and create predictive XMP data for images.
-
-Parses [Adobe XMP](https://www.adobe.com/products/xmp.html) data from edits in your catalogs, and trains a model based on camera raw sliders, with the goal of creating XMP side-car files for new images.
+Teach a pre-trained AI model to edit photos like you, right from your browser. This locally-hosted [Streamlit](https://streamlit.io/) app allows you to easily ingest Lightroom catalog files, train and save models, and create predictive Lightroom develop settings and/org XMP data for images.
 
 ![example_screen.png](./docs/example_screen.png)
 
@@ -22,11 +20,11 @@ python3 run.py
 
 ## Ingest
 
-Extract image data from Lightroom catalog `.lrcat` files.
+Extract image data from Lightroom catalog `.lrcat` files. Parses [Adobe XMP](https://www.adobe.com/products/xmp.html) data as well as internal develop settings.
 
 ## Train
 
-Train a model based on previously ingested slider data in `.csv` format.
+Train a model based on previously ingested slider data in `.csv` format and a directory of image previews to reference. The idea is that the model will learn ideal sldier settings based on raw image data.
 
 Can be run as a module via command line as well like:
 ```
@@ -43,7 +41,7 @@ python -m train \
 
 ## Predict
 
-Use model inference to generate slider values given image file inputs.
+Use model inference to predict slider values given image file inputs. The goal is for the trained model to independently generate XMP side-car files and/or internal Lightroom develop settings from image inputs, so that when you open Lightroom, all your images are already edited in your style.
 
 ## Lightroom Tools
 
@@ -55,7 +53,7 @@ From my digging, the tables of interest are:
 1.	`Adobe_AdditionalMetadata`
   - Column: xmp (TEXT) — contains the full XMP side-car XML for each image.
 2.	`Adobe_imageDevelopSettings`
-  - Columns: numeric fields like grayscale, hasPointColor, but not slider values (Lightroom moved to XMP). You can still pick up a handful of basic flags here, but the heavy lifting lives in the XMP.
+  - Columns: numeric fields like grayscale, hasPointColor. You can still pick up a handful of basic flags here, but the heavy lifting lives in the text column, which is a Lua-like data objecet with essentially all the develop settings that would be in the Camera Raw Settings namespace of the XMP. UNfortunately, the CRS attributes are not always included in the XMP dta returned from the catalog (this is a setting in Lightroom). That makes this table more reliable than going to the XMP. Unfortunately^2, Lightroom-SQL-tools doesn't currently support this data yet, so we have to get it ourselves with sqlite3.
 3.	`AgHarvestedExifMetadata`
   - Columns: aperture, shutterSpeed, isoSpeedRating, cameraModelRef, dateYear/dateMonth/dateDay, etc.
 
