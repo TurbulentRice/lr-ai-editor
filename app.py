@@ -4,9 +4,9 @@ import pandas as pd
 import streamlit as st
 from datetime import date
 
-from train.train import train_model
-from ingest.ingest import ingest
-from inference.inference import predict_sliders
+from train import train_model
+from ingest import ingest
+from predict import predict_sliders
 
 today = date.today()
 ten_years_ago = date(today.year - 10, today.month, today.day)

@@ -94,5 +94,4 @@ def build_xmp(slider_dict: dict[str, float]) -> str:
         , "{http://www.w3.org/1999/02/22-rdf-syntax-ns#}Description")
     for k, v in slider_dict.items():
         ET.SubElement(desc, f"{{{CRS_NS}}}{k}").text = f"{v:.4f}"
-    return ET.tostring(rdf, pretty_print=True,
-                          xml_declaration=True, encoding="utf-8").decode()
+    return ET.tostring(rdf, xml_declaration=True, encoding="utf-8").decode()

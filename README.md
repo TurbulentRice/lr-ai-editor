@@ -4,7 +4,7 @@ Teach a pre-trained AI model to edit photos like you with this locally-hosted [S
 
 Parses [Adobe XMP](https://www.adobe.com/products/xmp.html) data from edits in your catalogs, and trains a model based on camera raw sliders, with the goal of creating XMP side-car files for new images.
 
-![example.png](data/example.png)
+![example_screen.png](./docs/example_screen.png)
 
 ## Requirements
 
@@ -17,22 +17,39 @@ Run the start scrpt to initialize venv, install all dependencies, start the app,
 ./run.sh
 
 # Cross-platform Python launcher
-python run.py
+python3 run.py
 ```
 
-## [Ingest](./ingest/)
+## Ingest
 
-Extract image data from Lightroom catalog `.lrcat` files
+Extract image data from Lightroom catalog `.lrcat` files.
 
-## [Train](./train/)
+## Train
 
-Train a model based on previously ingested slider data.
+Train a model based on previously ingested slider data in `.csv` format.
+
+Can be run as a module via command line as well like:
+```
+# Activate venv if not already
+source .venv/bin/activate
+
+python -m train \
+  --csv /data/dataset/sliders.csv \
+  --previews /data/previews \
+  --out_model /data/models/model.pt \
+  --epochs 5 \
+  --batch_size 32
+```
+
+## Predict
+
+Use model inference to generate slider values given image file inputs.
 
 ## Lightroom Tools
 
 Using [Lightroom-SQL-tools](https://github.com/fdenivac/Lightroom-SQL-tools) to handle extracting data from `.lrcat` files.
 
-See the [full .lrcat table schema here](./lrcat_schema.sql).
+See the [full .lrcat table schema here](./docs/example_lrcat_schema.sql), and an [example XMP file here](./docs/example_xmp.xml)
 
 From my digging, the tables of interest are:
 1.	`Adobe_AdditionalMetadata`
@@ -41,3 +58,7 @@ From my digging, the tables of interest are:
   - Columns: numeric fields like grayscale, hasPointColor, but not slider values (Lightroom moved to XMP). You can still pick up a handful of basic flags here, but the heavy lifting lives in the XMP.
 3.	`AgHarvestedExifMetadata`
   - Columns: aperture, shutterSpeed, isoSpeedRating, cameraModelRef, dateYear/dateMonth/dateDay, etc.
+
+## Tests
+
+Run `pytest` to run all tests under [tests/](./tests/)
