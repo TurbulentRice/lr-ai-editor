@@ -1,6 +1,6 @@
 """
 Unified training logic callable from both CLI and Streamlit.
-Lightweight training script for the Lightroom-style slider-prediction model.
+Lightweight training script for Lightroom slider-prediction model.
 """
 from pathlib import Path
 import pandas as pd
@@ -11,6 +11,7 @@ from torch.utils.data import Dataset, DataLoader
 import torchvision.transforms as T
 from typing import Tuple, List
 from common.model import ResNetRegressor
+import json
 
 torch.classes.__path__ = []  # Neutralizes the path inspection
 
@@ -20,21 +21,11 @@ torch.classes.__path__ = []  # Neutralizes the path inspection
 class PreviewDataset(Dataset):
     def __init__(self, csv_path: Path, previews_dir: Path, transform=None):
         """
-        Dataset for loading image previews and their corresponding slider values.
-        
-        Args:
-            csv_path (Path): Path to CSV file containing image names and slider values
-            previews_dir (Path): Directory containing JPEG preview images
-            transform (callable, optional): Transform to apply to images. Defaults to resize + ToTensor.
-            
-        The CSV must contain:
-            - An 'image' column with image filenames (without extension)
-            - One or more columns containing slider values as floats
-            
-        Example CSV format:
-            image,Exposure2012,Contrast2012,Shadows2012
-            DSC_0001,0.5,10.0,-15.0
-            DSC_0002,-0.5,5.0,0.0
+        Dataset for loading image previews and their corresponding developsettings slider values.
+
+        CSV must contain:
+          - A 'name' column with image filenames (without extension or with extension as appropriate)
+          - A 'developsettings' column containing a JSON string with {"sliders": { ... }}
         """
         self.df = pd.read_csv(csv_path)
         self.previews_dir = Path(previews_dir)
@@ -45,22 +36,50 @@ class PreviewDataset(Dataset):
             ]
         )
 
-        # Identify slider columns (float) by excluding the "image" column
-        self.slider_cols = [c for c in self.df.columns if c.lower() != "image"]
-        if not self.slider_cols:
-            raise ValueError("No slider columns found in CSV.")
+        # Ensure required columns exist
+        if "name" not in self.df.columns:
+            raise ValueError("CSV must contain a 'name' column for image filenames.")
+        if "developsettings" not in self.df.columns:
+            raise ValueError("CSV must contain a 'developsettings' column (JSON‐encoded).")
+
+        # Parse developsettings JSON strings into Python dicts for each row
+        parsed_list = []
+        for raw in self.df["developsettings"]:
+            if pd.isna(raw) or raw == "":
+                parsed_list.append({})
+            else:
+                try:
+                    parsed_list.append(json.loads(raw))
+                except Exception:
+                    parsed_list.append(eval(raw))
+        self.df["__parsed"] = parsed_list
+
+        # Determine the slider keys from the first non‐empty developsettings
+        example = next((d for d in parsed_list if isinstance(d, dict) and d.get("sliders")), {})
+        if "sliders" not in example or not isinstance(example["sliders"], dict):
+            raise ValueError("Each developsettings must contain a 'sliders' dict.")
+        self.slider_keys = list(example["sliders"].keys())
+        self.n_sliders = len(self.slider_keys)
 
     def __len__(self):
         return len(self.df)
 
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
-        img_path = self.previews_dir / row["image"]
+        # Load preview image
+        img_name = row["name"]
+        img_path = self.previews_dir / img_name
         image = Image.open(img_path).convert("RGB")
         if self.transform:
             image = self.transform(image)
 
-        sliders = torch.tensor(row[self.slider_cols].values, dtype=torch.float32)
+        # Extract slider values from parsed developsettings
+        devdict = row["__parsed"]
+        slider_vals = []
+        for k in self.slider_keys:
+            slider_vals.append(float(devdict["sliders"].get(k, 0.0)))
+
+        sliders = torch.tensor(slider_vals, dtype=torch.float32)
         return image, sliders
 
 
@@ -75,12 +94,12 @@ def train_model(
     Train a slider-prediction model using the CSV and previews directory.
     Returns (model, losses, slider_cols).
     """
-    # Load dataset
+    # Load dataset: previews + developsettings sliders
     ds = PreviewDataset(Path(csv_path), Path(previews_dir))
     loader = DataLoader(ds, batch_size=batch_size, shuffle=True, num_workers=2)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = ResNetRegressor(n_outputs=len(ds.slider_cols)).to(device)
+    model = ResNetRegressor(n_outputs=ds.n_sliders).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     criterion = nn.MSELoss()
     losses = []
@@ -107,4 +126,4 @@ def train_model(
     torch.save(model.state_dict(), str(out_path))
     print(f"Model saved to {out_path}")
 
-    return model, losses, ds.slider_cols
+    return model, losses, ds.slider_keys
