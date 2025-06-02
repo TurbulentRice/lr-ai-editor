@@ -28,7 +28,6 @@ python3 run.py
 - [PyTorch](https://pytorch.org/)
 - [Lightroom-SQL-tools](https://github.com/fdenivac/Lightroom-SQL-tools)
 - [Python XMP Toolkit](https://python-xmp-toolkit.readthedocs.io/en/latest/installation.html#requirements)
-- [Luadata](https://pypi.org/project/luadata/)
 
 ## Ingest
 
