@@ -17,7 +17,3 @@ data/*/**
 
 # Environment files
 .env
-
-# Docker
-*.log
-EOF

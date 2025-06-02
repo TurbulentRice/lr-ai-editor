@@ -29,7 +29,7 @@ st.set_page_config(page_title="LR-AI-Editor", layout="wide")
 #     """,
 #     unsafe_allow_html=True
 # )
-st.title("LR-AI-Editor")
+st.title("Lightroom AI Editor")
 mode = st.sidebar.radio("Mode", ["Ingest", "Train", "Predict"] )
 
 if mode == "Ingest":

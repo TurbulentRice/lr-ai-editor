@@ -1,13 +1,17 @@
 # Lightroom AI Editor
 
-Teach a pre-trained AI model to edit photos like you, right from your browser. This locally-hosted [Streamlit](https://streamlit.io/) app allows you to easily ingest Lightroom catalog files, train and save models, and create predictive Lightroom develop settings and/org XMP data for images.
+Teach a pre-trained AI model to edit photos like you, right from your browser. This locally-hosted data app allows you to easily ingest Lightroom catalog files, train and save models, and generate predictive Lightroom develop settings and/org XMP data for images.
 
 ![example_screen.png](./docs/example_screen.png)
 
-## Requirements
+## Getting started
+
+### Requirements
 
 - Python 3.9+
 - [Exempi 2.2.0+](https://libopenraw.freedesktop.org/exempi/) (for [Python XMP Toolkit](https://python-xmp-toolkit.readthedocs.io/en/latest/installation.html#requirements)) - installed by start script
+
+### Run the app
 
 Run the start scrpt to initialize venv, install all dependencies, start the app, and open the UI:
 ```
@@ -18,13 +22,21 @@ Run the start scrpt to initialize venv, install all dependencies, start the app,
 python3 run.py
 ```
 
+### Dependencies
+- [Streamlit](https://streamlit.io/)
+- [Pandas](https://pypi.org/project/pandas/)
+- [PyTorch](https://pytorch.org/)
+- [Lightroom-SQL-tools](https://github.com/fdenivac/Lightroom-SQL-tools)
+- [Python XMP Toolkit](https://python-xmp-toolkit.readthedocs.io/en/latest/installation.html#requirements)
+- [Luadata](https://pypi.org/project/luadata/)
+
 ## Ingest
 
-Extract image data from Lightroom catalog `.lrcat` files. Parses [Adobe XMP](https://www.adobe.com/products/xmp.html) data as well as internal develop settings.
+Drag-and-drop as many Lightroom catalog `.lrcat` files into the UI as you want. Click "Run Ingest" to extract image metadata, decode [Adobe XMP](https://www.adobe.com/products/xmp.html) data, and parse internal develop settings.
 
 ## Train
 
-Train a model based on previously ingested slider data in `.csv` format and a directory of image previews to reference. The idea is that the model will learn ideal sldier settings based on raw image data.
+Train and save models using previously ingested slider datasets in `.csv` format.  References unedited image previews to learn ideal slider settings based on raw image data.
 
 Can be run as a module via command line as well like:
 ```
@@ -53,7 +65,7 @@ From my digging, the tables of interest are:
 1.	`Adobe_AdditionalMetadata`
   - Column: xmp (TEXT) — contains the full XMP side-car XML for each image.
 2.	`Adobe_imageDevelopSettings`
-  - Columns: numeric fields like grayscale, hasPointColor. You can still pick up a handful of basic flags here, but the heavy lifting lives in the text column, which is a Lua-like data objecet with essentially all the develop settings that would be in the Camera Raw Settings namespace of the XMP. UNfortunately, the CRS attributes are not always included in the XMP dta returned from the catalog (this is a setting in Lightroom). That makes this table more reliable than going to the XMP. Unfortunately^2, Lightroom-SQL-tools doesn't currently support this data yet, so we have to get it ourselves with sqlite3.
+  - Columns: numeric fields like grayscale, hasPointColor. You can still pick up a handful of basic flags here, but the heavy lifting lives in the text column, which is a Lua-like data objecet with essentially all the develop settings that would be in the Camera Raw Settings namespace of the XMP. Unfortunately, the CRS attributes are not always included in the XMP dta returned from the catalog (this is a setting in Lightroom). That makes this table more reliable than going to the XMP. Unfortunately^2, Lightroom-SQL-tools doesn't currently support this data yet, so we have to get it ourselves with sqlite3.
 3.	`AgHarvestedExifMetadata`
   - Columns: aperture, shutterSpeed, isoSpeedRating, cameraModelRef, dateYear/dateMonth/dateDay, etc.
 
