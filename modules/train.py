@@ -10,7 +10,7 @@ from torch import nn
 from torch.utils.data import Dataset, DataLoader
 import torchvision.transforms as T
 from typing import Tuple, List
-from common.model import ResNetRegressor
+from modules.model import ResNetRegressor
 import json
 
 torch.classes.__path__ = []  # Neutralizes the path inspection
@@ -26,8 +26,13 @@ class PreviewDataset(Dataset):
         CSV must contain:
           - A 'name' column with image filenames (without extension or with extension as appropriate)
           - A 'developsettings' column containing a JSON string with {"sliders": { ... }}
+
+        As of now, "name" and "developsettings" are the only columns we look at. Everything else from the CSV is ignored.
+        Eventually the user will select which columns to use for training, or at least choose between
+        using developsettings and XMP, but for now we'll just look at the sliders.
         """
-        self.df = pd.read_csv(csv_path)
+
+        self.df = pd.read_csv(csv_path, usecols=["name", "developsettings"])
         self.previews_dir = Path(previews_dir)
         self.transform = transform or T.Compose(
             [
@@ -40,26 +45,21 @@ class PreviewDataset(Dataset):
         if "name" not in self.df.columns:
             raise ValueError("CSV must contain a 'name' column for image filenames.")
         if "developsettings" not in self.df.columns:
-            raise ValueError("CSV must contain a 'developsettings' column (JSON‐encoded).")
+            raise ValueError("CSV must contain a 'developsettings' column (JSON-encoded).")
 
         # Parse developsettings JSON strings into Python dicts for each row
-        parsed_list = []
-        for raw in self.df["developsettings"]:
-            if pd.isna(raw) or raw == "":
-                parsed_list.append({})
-            else:
-                try:
-                    parsed_list.append(json.loads(raw))
-                except Exception:
-                    parsed_list.append(eval(raw))
-        self.df["__parsed"] = parsed_list
+        self.df["developsettings"] = self.df["developsettings"].apply(
+            lambda x: {} if pd.isna(x) or x == "" else json.loads(x) if isinstance(x, str) else x
+        )
 
-        # Determine the slider keys from the first non‐empty developsettings
-        example = next((d for d in parsed_list if isinstance(d, dict) and d.get("sliders")), {})
+        # Determine the slider keys from the first non-empty developsettings
+        example = next((d for d in self.df["developsettings"] if isinstance(d, dict) and d.get("sliders")), {})
         if "sliders" not in example or not isinstance(example["sliders"], dict):
             raise ValueError("Each developsettings must contain a 'sliders' dict.")
         self.slider_keys = list(example["sliders"].keys())
         self.n_sliders = len(self.slider_keys)
+
+        # We'll eventually want to flatten this out so that sliders aren't nested in a dict
 
     def __len__(self):
         return len(self.df)
@@ -74,10 +74,10 @@ class PreviewDataset(Dataset):
             image = self.transform(image)
 
         # Extract slider values from parsed developsettings
-        devdict = row["__parsed"]
-        slider_vals = []
-        for k in self.slider_keys:
-            slider_vals.append(float(devdict["sliders"].get(k, 0.0)))
+        # This will be easier once we figure out what values we need earlier on and send this fn
+        # a flattened view of them so it won't have to do as much work
+        develop_settings = row["developsettings"]
+        slider_vals = [float(develop_settings["sliders"].get(k, 0.0)) for k in self.slider_keys]
 
         sliders = torch.tensor(slider_vals, dtype=torch.float32)
         return image, sliders
@@ -104,10 +104,15 @@ def train_model(
     criterion = nn.MSELoss()
     losses = []
 
+    # Training loop
     for epoch in range(1, epochs + 1):
+        print(f"... Starting epoch {epoch}")
         model.train()
         running_loss = 0.0
+
         for imgs, targets in loader:
+            print(f"imgs: {imgs.shape}, targets: {targets.shape}")
+            raise Exception("Stop here")
             imgs, targets = imgs.to(device), targets.to(device)
             optimizer.zero_grad()
             preds = model(imgs)
@@ -127,3 +132,36 @@ def train_model(
     print(f"Model saved to {out_path}")
 
     return model, losses, ds.slider_keys
+
+
+"""
+Invoke directly via CL from the project root like:
+
+python -m modules.train \
+    --csv /data/dataset/sliders.csv \
+    --previews /data/previews \
+    --out_model /data/models \
+    --epochs 5 \
+    --batch_size 32
+"""
+
+def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Train slider prediction model.")
+    parser.add_argument("--csv",       required=True, type=str, help="Path to dataset CSV")
+    parser.add_argument("--previews",  required=True, type=str, help="Directory of previews")
+    parser.add_argument("--out_model", required=True, type=str, help="Path to save model .pt")
+    parser.add_argument("--epochs",    type=int,   default=5,   help="Number of epochs")
+    parser.add_argument("--batch_size",type=int,   default=32,  help="Batch size")
+    args = parser.parse_args()
+
+    train_model(
+        csv_path=args.csv,
+        previews_dir=args.previews,
+        out_model_path=args.out_model,
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+    )
+
+if __name__ == "__main__":
+    main()

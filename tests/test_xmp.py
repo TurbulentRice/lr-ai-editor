@@ -2,7 +2,7 @@ import zlib
 import pytest
 import xml.etree.ElementTree as ET
 
-from common.helpers import (
+from modules.xmp import (
     decode_xmp_blob,
     parse_xmp,
     custom_crs_parse_xmp,

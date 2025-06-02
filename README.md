@@ -34,16 +34,29 @@ python3 run.py
 
 Drag-and-drop as many Lightroom catalog `.lrcat` files into the UI as you want. Click "Run Ingest" to extract image metadata, decode [Adobe XMP](https://www.adobe.com/products/xmp.html) data, and parse internal develop settings.
 
-## Train
+Can be run from the command line as well:
 
-Train and save models using previously ingested slider datasets in `.csv` format.  References unedited image previews to learn ideal slider settings based on raw image data.
-
-Can be run as a module via command line as well like:
 ```
 # Activate venv if not already
 source .venv/bin/activate
 
-python -m train \
+python -m modules.ingest \
+    --catalog /data/raw/catalog.lrcat \
+    --previews /data/previews \
+    --out_csv /data/models \
+    --criteria "flag=flagged,colorlabel=green"
+```
+
+## Train
+
+Train and save models using previously ingested slider datasets in `.csv` format.  References unedited image previews to learn ideal slider settings based on raw image data.
+
+Can be run from the command line as well:
+```
+# Activate venv if not already
+source .venv/bin/activate
+
+python -m modules.train \
   --csv /data/dataset/sliders.csv \
   --previews /data/previews \
   --out_model /data/models/model.pt \

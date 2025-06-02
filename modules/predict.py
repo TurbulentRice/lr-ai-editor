@@ -1,7 +1,7 @@
 import torch
 from PIL import Image
 import torchvision.transforms as T
-from common.model import ResNetRegressor
+from modules.model import ResNetRegressor
 
 def predict_sliders(uploaded_files, model_path: str, slider_cols):
     """
