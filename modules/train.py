@@ -112,7 +112,6 @@ def train_model(
 
         for imgs, targets in loader:
             print(f"imgs: {imgs.shape}, targets: {targets.shape}")
-            raise Exception("Stop here")
             imgs, targets = imgs.to(device), targets.to(device)
             optimizer.zero_grad()
             preds = model(imgs)

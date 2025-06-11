@@ -99,13 +99,13 @@ def main():
     parser.add_argument("--catalog",    required=True, type=str, help="Path to LRCAT file")
     parser.add_argument("--previews",   required=True, type=str, help="Directory of previews")
     parser.add_argument("--out_csv",    required=True, type=str, help="Path to save dataset CSV")
-    parser.add_argument("--criteria",   type=int,   default="", help="Comma-separated string of criteria")
+    parser.add_argument("--criteria",   type=str,   default="", help="Comma-separated string of criteria")
     args = parser.parse_args()
 
     ingest(
         catalog=args.catalog,
         previews_dir=args.previews,
-        out_csv_=args.out_csv,
+        out_csv=args.out_csv,
         criteria=args.criteria,
     )
 
