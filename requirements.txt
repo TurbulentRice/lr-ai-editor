@@ -5,3 +5,4 @@ git+https://github.com/fdenivac/Lightroom-SQL-tools
 streamlit
 python-xmp-toolkit
 pytest
+rawpy

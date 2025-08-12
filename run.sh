@@ -26,4 +26,4 @@ echo "📦 Installing dependencies..."
 # 4. Run the app
 STREAMLIT=.venv/bin/streamlit
 echo "🚀 Launching Streamlit..."
-exec "$STREAMLIT" run app.py
+exec "$STREAMLIT" run Home.py

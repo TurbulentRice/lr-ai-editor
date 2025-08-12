@@ -12,14 +12,24 @@ import torchvision.transforms as T
 from typing import Tuple, List
 from modules.model import ResNetRegressor
 import json
+from modules.sliders import SLIDER_NAME_MAP
+
 
 torch.classes.__path__ = []  # Neutralizes the path inspection
+
 
 # --------------------------------------------------------------------------- #
 # Dataset
 # --------------------------------------------------------------------------- #
 class PreviewDataset(Dataset):
-    def __init__(self, csv_path: Path, previews_dir: Path, transform=None):
+    def __init__(
+        self,
+        csv_path: Path,
+        previews_dir: Path,
+        transform=None,
+        selected_friendly_sliders: List[str] | None = None,
+        slider_name_map: dict = SLIDER_NAME_MAP,
+    ):
         """
         Dataset for loading image previews and their corresponding developsettings slider values.
 
@@ -27,17 +37,16 @@ class PreviewDataset(Dataset):
           - A 'name' column with image filenames (without extension or with extension as appropriate)
           - A 'developsettings' column containing a JSON string with {"sliders": { ... }}
 
-        As of now, "name" and "developsettings" are the only columns we look at. Everything else from the CSV is ignored.
-        Eventually the user will select which columns to use for training, or at least choose between
-        using developsettings and XMP, but for now we'll just look at the sliders.
+        By default, uses all sliders defined in SLIDER_NAME_MAP. You can pass a subset via
+        `selected_friendly_sliders` to train on only those.
         """
-
         self.df = pd.read_csv(csv_path, usecols=["name", "developsettings"])
         self.previews_dir = Path(previews_dir)
         self.transform = transform or T.Compose(
             [
                 T.Resize((224, 224)),
                 T.ToTensor(),
+                # optionally: T.Normalize(mean, std)
             ]
         )
 
@@ -52,14 +61,20 @@ class PreviewDataset(Dataset):
             lambda x: {} if pd.isna(x) or x == "" else json.loads(x) if isinstance(x, str) else x
         )
 
-        # Determine the slider keys from the first non-empty developsettings
+        # Verify structure has 'sliders' dict somewhere
         example = next((d for d in self.df["developsettings"] if isinstance(d, dict) and d.get("sliders")), {})
         if "sliders" not in example or not isinstance(example["sliders"], dict):
             raise ValueError("Each developsettings must contain a 'sliders' dict.")
-        self.slider_keys = list(example["sliders"].keys())
-        self.n_sliders = len(self.slider_keys)
 
-        # We'll eventually want to flatten this out so that sliders aren't nested in a dict
+        # Determine which sliders to use (friendly names) while preserving the canonical order
+        self.slider_name_map = slider_name_map
+        if not selected_friendly_sliders:
+            selected_friendly_sliders = list(self.slider_name_map.keys())
+        self.slider_friendly = [k for k in self.slider_name_map.keys() if k in selected_friendly_sliders]
+        self.slider_raw = [self.slider_name_map[k] for k in self.slider_friendly]
+        self.n_sliders = len(self.slider_friendly)
+        if self.n_sliders == 0:
+            raise ValueError("No sliders selected. Provide at least one slider to train on.")
 
     def __len__(self):
         return len(self.df)
@@ -73,11 +88,10 @@ class PreviewDataset(Dataset):
         if self.transform:
             image = self.transform(image)
 
-        # Extract slider values from parsed developsettings
-        # This will be easier once we figure out what values we need earlier on and send this fn
-        # a flattened view of them so it won't have to do as much work
-        develop_settings = row["developsettings"]
-        slider_vals = [float(develop_settings["sliders"].get(k, 0.0)) for k in self.slider_keys]
+        # Extract selected slider values from parsed developsettings
+        develop_settings = row.get("developsettings", {})
+        sliders_src = develop_settings.get("sliders", {}) if isinstance(develop_settings, dict) else {}
+        slider_vals = [float(sliders_src.get(raw_key, 0.0)) for raw_key in self.slider_raw]
 
         sliders = torch.tensor(slider_vals, dtype=torch.float32)
         return image, sliders
@@ -89,13 +103,19 @@ def train_model(
     out_model_path: str,
     epochs: int = 5,
     batch_size: int = 32,
+    selected_friendly_sliders: List[str] | None = None,
 ) -> Tuple[torch.nn.Module, List[float], List[str]]:
     """
     Train a slider-prediction model using the CSV and previews directory.
-    Returns (model, losses, slider_cols).
+    Only the user-selected sliders (friendly names) are used.
+    Returns (model, losses, slider_friendly_names_in_order).
     """
-    # Load dataset: previews + developsettings sliders
-    ds = PreviewDataset(Path(csv_path), Path(previews_dir))
+    # Load dataset: previews + selected developsettings sliders
+    ds = PreviewDataset(
+        Path(csv_path),
+        Path(previews_dir),
+        selected_friendly_sliders=selected_friendly_sliders,
+    )
     loader = DataLoader(ds, batch_size=batch_size, shuffle=True, num_workers=2)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -130,7 +150,8 @@ def train_model(
     torch.save(model.state_dict(), str(out_path))
     print(f"Model saved to {out_path}")
 
-    return model, losses, ds.slider_keys
+    # Return friendly slider names in the exact order used for training
+    return model, losses, ds.slider_friendly
 
 
 """
@@ -152,6 +173,12 @@ def main():
     parser.add_argument("--out_model", required=True, type=str, help="Path to save model .pt")
     parser.add_argument("--epochs",    type=int,   default=5,   help="Number of epochs")
     parser.add_argument("--batch_size",type=int,   default=32,  help="Batch size")
+    parser.add_argument(
+        "--sliders",
+        type=str,
+        default="",
+        help="Comma-separated list of slider names (friendly). Leave empty to use all.",
+    )
     args = parser.parse_args()
 
     train_model(
@@ -160,6 +187,7 @@ def main():
         out_model_path=args.out_model,
         epochs=args.epochs,
         batch_size=args.batch_size,
+        selected_friendly_sliders=[s.strip() for s in args.sliders.split(",") if s.strip()] or None,
     )
 
 if __name__ == "__main__":
