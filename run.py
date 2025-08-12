@@ -26,4 +26,4 @@ subprocess.check_call([pip_exe, "install", "-r", "requirements.txt"])
 
 # 4. Launch Streamlit
 print("🚀 Launching Streamlit…")
-os.execv(st_exe, [st_exe, "run", "app.py"])
+os.execv(st_exe, [st_exe, "run", "Home.py"])

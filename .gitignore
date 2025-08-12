@@ -17,3 +17,4 @@ data/*/**
 
 # Environment files
 .env
+.lr_ai_editor_state.json
