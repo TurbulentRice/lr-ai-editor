@@ -23,6 +23,7 @@ class PreviewsOptions:
     overwrite: bool = False
     max_workers: int = 4
     limit: Optional[int] = None
+    include_stems: Optional[set[str]] = None
 
 
 @dataclass
@@ -46,7 +47,7 @@ class PreviewsJob:
         """Fire-and-forget start of conversion workers."""
         self.status = "running"
         self.out_dir.mkdir(parents=True, exist_ok=True)
-        files = list(enumerate_raw_files(self.source_dir, self.options.recursive))
+        files = list(enumerate_raw_files(self.source_dir, self.options.recursive, include_stems=self.options.include_stems))
         if self.options.limit:
             files = files[: int(self.options.limit)]
         self.total = len(files)
@@ -136,7 +137,7 @@ def find_active_job(source_dir: Optional[Path] = None, out_dir: Optional[Path] =
     return candidates[0] if candidates else None
 
 
-def enumerate_raw_files(src: Path, recursive: bool) -> List[Path]:
+def enumerate_raw_files(src: Path, recursive: bool, include_stems: Optional[set[str]] = None) -> List[Path]:
     if not src.exists():
         return []
     patterns = ["**/*"] if recursive else ["*"]
@@ -144,6 +145,8 @@ def enumerate_raw_files(src: Path, recursive: bool) -> List[Path]:
     for pat in patterns:
         for p in src.glob(pat):
             if p.is_file() and p.suffix.lower() in RAW_EXTS:
+                if include_stems is not None and p.stem not in include_stems:
+                    continue
                 out.append(p)
     out.sort()
     return out
@@ -206,6 +209,7 @@ def start_previews_job(
     overwrite: bool = False,
     max_workers: int = 4,
     limit: Optional[int] = None,
+    include_stems: Optional[set[str]] = None,
 ) -> PreviewsJob:
     job = PreviewsJob(
         source_dir=Path(source_dir),
@@ -218,6 +222,7 @@ def start_previews_job(
             overwrite=overwrite,
             max_workers=max_workers,
             limit=limit,
+            include_stems=include_stems,
         ),
     )
     _register_job(job)

@@ -29,6 +29,23 @@ def main():
     max_workers = st.sidebar.number_input("Workers", min_value=1, max_value=16, value=int(_pv.get("max_workers", 4)))
     limit = st.sidebar.number_input("Limit files (0 = no limit)", min_value=0, value=int(_pv.get("limit", 0)))
 
+    limit_by_csv = st.sidebar.checkbox("Limit to images listed in a dataset CSV", value=bool(_pv.get("limit_by_csv", False)))
+    csv_filter_path = st.sidebar.text_input(
+        "Dataset CSV (optional)",
+        value=_pv.get("csv_filter_path", ""),
+        help="If enabled, only RAW files whose stem appears in the CSV 'name' column will be converted.",
+    )
+
+    include_stems = None
+    if limit_by_csv and csv_filter_path.strip():
+        try:
+            df_names = pd.read_csv(csv_filter_path, usecols=["name"])
+            include_stems = set(Path(n).stem for n in df_names["name"].astype(str).tolist())
+            st.sidebar.caption(f"CSV filter active: {len(include_stems)} filenames")
+        except Exception as e:
+            st.sidebar.warning(f"Could not read CSV names: {e}")
+            include_stems = None
+
     # Reclaim or get active job
     job = st.session_state.get("previews_job", None)
     if job is None:
@@ -52,6 +69,7 @@ def main():
                 overwrite=overwrite,
                 max_workers=int(max_workers),
                 limit=(int(limit) or None),
+                include_stems=include_stems,
             )
             st.session_state["previews_job"] = job
 
@@ -83,6 +101,8 @@ def main():
         "overwrite": bool(overwrite),
         "max_workers": int(max_workers),
         "limit": int(limit),
+        "limit_by_csv": bool(limit_by_csv),
+        "csv_filter_path": csv_filter_path,
     })
     state.save_if_changed()
 
@@ -95,7 +115,7 @@ def main():
     # Auto-refresh every 2s while a job is active
     if job is not None and is_job_active(job):
         time.sleep(2)
-        st.experimental_rerun()
+        st.rerun()
 
 if __name__ == "__main__":
     main()
