@@ -92,10 +92,6 @@ def main():
                 st.header(catalog_file.name)
                 st.dataframe(df)
                 all_dfs.append(df)
-                # Remember the last opened catalog table across page switches (session-only, not persisted to disk)
-                st.session_state["ingest_last_df"] = df
-                st.session_state["ingest_last_name"] = catalog_file.name
-                did_ingest = True
 
             # Show combined results
             if len(catalog_files) > 1:
@@ -103,15 +99,32 @@ def main():
                 st.header("Combined Ingested Data")
                 st.dataframe(combined)
 
-    # Show the last opened catalog table if available (survives page switches)
-    if not did_ingest and st.session_state.get("ingest_last_df") is not None:
-        last_name = st.session_state.get("ingest_last_name", "(unknown)")
-        st.subheader(f"Last opened: {last_name}")
-        st.dataframe(st.session_state["ingest_last_df"])
-        if st.button("Clear last results"):
-            st.session_state.pop("ingest_last_df", None)
-            st.session_state.pop("ingest_last_name", None)
-            st.experimental_rerun()
+    # Always show the current dataset CSV on disk (path from "Output CSV path")
+    st.subheader("Current dataset CSV")
+    csv_path = Path(out_csv)
+    if csv_path.exists():
+        # Row count + lightweight preview controls
+        try:
+            row_ct = pd.read_csv(csv_path, usecols=["name"]).shape[0]
+        except Exception:
+            row_ct = None
+        st.caption(f"Path: `{csv_path}`" + (f" • Rows: **{row_ct}**" if row_ct is not None else ""))
+        preview_rows = st.number_input(
+            "Rows to preview",
+            min_value=5,
+            max_value=5000,
+            value=200,
+            step=50,
+            key="ingest_csv_preview_rows",
+            help="Quick peek at the CSV that training will use."
+        )
+        try:
+            df_preview = pd.read_csv(csv_path, nrows=int(preview_rows))
+            st.dataframe(df_preview, use_container_width=True, height=400)
+        except Exception as e:
+            st.info(f"Could not read CSV: {e}")
+    else:
+        st.info("No CSV found at the specified path yet. Run Ingest to create one, or set a valid path.")
 
     # Persist current Ingest settings
     state.update(
