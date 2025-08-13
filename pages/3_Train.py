@@ -57,7 +57,7 @@ def main():
             "selected_sliders": st.session_state["train_sliders_sel"],
         })
         state.save_if_changed()
-        st.experimental_rerun()
+        st.rerun()
 
     # Persist current Train settings
     state.update(
@@ -116,30 +116,27 @@ def main():
     # Combined CSV/Preview summary of what will actually be used
     with st.expander("Training data summary", expanded=True):
         try:
-            usable_df, missing_df, counts = build_training_overview(csv_path, previews_dir, effective_sliders, limit=500)
-            # Count previews present in the folder (recursive)
+            # full CSV (no row limit) for accurate metrics
+            usable_df, missing_df, counts = build_training_overview(csv_path, previews_dir, effective_sliders, limit=0)
+
+            # Build an index of all preview files (recursive) and count
             prev_dir_path = Path(previews_dir)
-            previews_ct = 0
-            if prev_dir_path.exists():
-                for ext in PREVIEW_EXTS:
-                    previews_ct += sum(1 for _ in prev_dir_path.rglob(f"*{ext}"))
-
-            coverage = 0.0
-            if counts["total"] > 0:
-                coverage = round(100.0 * (counts["usable"] / counts["total"]), 1)
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("Rows in CSV", counts["total"])
-            m2.metric("Previews in folder", previews_ct)
-            m3.metric("Usable (preview exists)", counts["usable"])
-            m4.metric("Coverage", f"{coverage}%")
-
-            # Thumbnail grid for usable rows (show first 24)
-            st.caption("Usable previews (first 24)")
-            # Build a mapping from stem/name to an actual preview path
             preview_paths = []
             if prev_dir_path.exists():
                 for ext in PREVIEW_EXTS:
                     preview_paths.extend(prev_dir_path.rglob(f"*{ext}"))
+            previews_ct = len(preview_paths)
+            usable_stems = counts.get("usable_distinct_stems", counts.get("usable", 0))
+
+            # Metrics: keep it simple and consistent
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Total usable", usable_stems)
+            m2.metric("Rows in CSV", counts.get("total", 0))
+            m3.metric("Previews", previews_ct)
+
+            # Thumbnail grid for usable rows (show first 24)
+            st.caption("Usable previews (first 24)")
+            # Build a mapping from stem/name to an actual preview path (reuse the list we built above)
             name_map = {p.name.lower(): p for p in preview_paths}
             stem_map = {p.stem.lower(): p for p in preview_paths}
 
@@ -168,7 +165,7 @@ def main():
                             with cols[c]:
                                 st.image(str(p), caption=Path(fn).name, use_container_width=True)
 
-            if counts["missing"] > 0:
+            if counts.get("missing", 0) > 0:
                 show_missing = st.checkbox(
                     "Show missing previews (in CSV but file not found)",
                     value=False,

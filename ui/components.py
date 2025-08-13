@@ -1,17 +1,46 @@
 from __future__ import annotations
 
 from pathlib import Path
-PREVIEW_EXTS = [".jpg", ".jpeg", ".webp", ".png"]
 from typing import Dict, List, Optional, Tuple
+
 import json
 import pandas as pd
 import streamlit as st
+
+# Common preview extensions used across the app
+PREVIEW_EXTS = [".jpg", ".jpeg", ".webp", ".png"]
+
+# Internal helpers ------------------------------------------------------------
+def _parse_developsettings(js) -> Dict:
+    """Robustly parse the 'developsettings' JSON field from CSV rows."""
+    if isinstance(js, dict):
+        return js
+    if not isinstance(js, str) or js.strip() == "":
+        return {}
+    try:
+        return json.loads(js)
+    except Exception:
+        return {}
+
+def _index_preview_files(previews_dir: Path, recursive: bool = False) -> List[Path]:
+    """Return a list of preview files under previews_dir; recursive if requested."""
+    if not previews_dir.exists():
+        return []
+    files: List[Path] = []
+    if recursive:
+        for ext in PREVIEW_EXTS:
+            files.extend(previews_dir.rglob(f"*{ext}"))
+    else:
+        for ext in PREVIEW_EXTS:
+            files.extend(previews_dir.glob(f"*{ext}"))
+    return files
 
 
 # ---------------------------------------------------------------------------
 # Data preview helper
 # ---------------------------------------------------------------------------
 
+@st.cache_data(ttl=2)
 def build_preview_table(
     csv_path: str | Path,
     selected_friendly: List[str],
@@ -39,17 +68,7 @@ def build_preview_table(
     if limit:
         df = df.head(int(limit))
 
-    def _parse(js):
-        if isinstance(js, dict):
-            return js
-        if not isinstance(js, str) or js.strip() == "":
-            return {}
-        try:
-            return json.loads(js)
-        except Exception:
-            return {}
-
-    parsed = df["developsettings"].apply(_parse)
+    parsed = df["developsettings"].apply(_parse_developsettings)
     out = pd.DataFrame({"filename": df["name"]})
     for friendly in selected_friendly:
         raw = (slider_name_map or {}).get(friendly)
@@ -65,6 +84,7 @@ def build_preview_table(
 # Training overview helper
 # ---------------------------------------------------------------------------
 
+@st.cache_data(ttl=2)
 def build_training_overview(
     csv_path: str | Path,
     previews_dir: str | Path,
@@ -96,28 +116,11 @@ def build_training_overview(
     if limit:
         df = df.head(int(limit))
 
-    # Parse JSON safely
-    def _parse(js):
-        if isinstance(js, dict):
-            return js
-        if not isinstance(js, str) or js.strip() == "":
-            return {}
-        try:
-            return json.loads(js)
-        except Exception:
-            return {}
+    df["__parsed"] = df["developsettings"].apply(_parse_developsettings)
 
-    df["__parsed"] = df["developsettings"].apply(_parse)
-
-    # Build a recursive, case-insensitive index of previews (handles subfolders and extension changes)
-    if prev_dir.exists():
-        preview_paths = []
-        for ext in PREVIEW_EXTS:
-            preview_paths.extend(prev_dir.rglob(f"*{ext}"))
-        names_index = {p.name.lower() for p in preview_paths}
-        stems_index = {p.stem.lower() for p in preview_paths}
-    else:
-        names_index, stems_index = set(), set()
+    preview_paths = _index_preview_files(prev_dir, recursive=True)
+    names_index = {p.name.lower() for p in preview_paths}
+    stems_index = {p.stem.lower() for p in preview_paths}
 
     def _exists(name: str) -> bool:
         raw = Path(str(name))
@@ -128,6 +131,10 @@ def build_training_overview(
     # Build tables
     present = df[df["__exists"]].copy()
     missing = df[~df["__exists"]].copy()
+
+    # Distinct stem sets for apples-to-apples with preview files
+    csv_all_stems = {Path(n).stem.lower() for n in df["name"].astype(str).tolist()}
+    csv_present_stems = {Path(n).stem.lower() for n in present["name"].astype(str).tolist()}
 
     usable = pd.DataFrame({"filename": present["name"].astype(str).values})
     for friendly in selected_friendly:
@@ -140,9 +147,11 @@ def build_training_overview(
 
     missing_df = pd.DataFrame({"filename": missing["name"].astype(str).values})
     counts = {
-        "total": int(len(df)),
-        "usable": int(len(present)),
-        "missing": int(len(missing)),
+        "total": int(len(df)),                 # total rows in CSV (row-based)
+        "usable": int(len(present)),           # rows that have a matching preview (row-based)
+        "missing": int(len(missing)),          # rows without a matching preview (row-based)
+        "csv_distinct_stems": int(len(csv_all_stems)),           # distinct stems referenced by CSV
+        "usable_distinct_stems": int(len(csv_present_stems)),    # distinct stems that have previews
     }
     return usable, missing_df, counts
 
@@ -157,13 +166,14 @@ def render_thumbnail_grid(
     per_page: int = 24,
     state_prefix: str = "thumb",
     caption: str | None = None,
+    recursive: bool = False,
 ) -> dict:
     """
-    Render a paginated thumbnail grid from a previews directory.
+    Render a paginated thumbnail grid from a previews directory (optionally recursive).
     Returns a dict with {total, page, num_pages}.
     """
     outdir = Path(previews_dir)
-    files = list(outdir.glob("*.jpg")) + list(outdir.glob("*.jpeg")) + list(outdir.glob("*.webp"))
+    files = _index_preview_files(outdir, recursive=recursive)
     files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
     total = len(files)
     meta = {"total": total, "page": 1, "num_pages": 1}
