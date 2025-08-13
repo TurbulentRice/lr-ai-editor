@@ -1,6 +1,7 @@
 from __future__ import annotations
 from pathlib import Path
 import streamlit as st
+import pandas as pd
 
 from ui import state
 from modules.previews import find_active_job, is_job_active
@@ -93,6 +94,21 @@ with right:
         """,
         help="Edit these on their respective pages. Settings persist across reloads.",
     )
+
+    # Quick view of the user-defined CSV path
+    st.subheader("Dataset CSV")
+    csv_path_str = trn.get("csv_path", "data/dataset/sliders.csv")
+    csv_path = Path(csv_path_str)
+    if csv_path.exists():
+        try:
+            # Light-weight row count without rendering a table
+            row_ct = pd.read_csv(csv_path, usecols=["name"]).shape[0]
+            st.write(f"Path: `{csv_path}`  •  Rows: **{row_ct}**")
+        except Exception as e:
+            st.write(f"Path: `{csv_path}`")
+            st.info(f"Could not read CSV row count. Error: {e}")
+    else:
+        st.info("No CSV found yet. Set the path on the **Train** or **Ingest** page to see details here.")
 
 st.divider()
 
