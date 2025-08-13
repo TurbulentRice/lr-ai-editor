@@ -1,6 +1,6 @@
 # Lightroom AI Editor
 
-Teach a pre‑trained AI model to edit photos like you - locally, in your browser.  
+Teach a pre‑trained AI model to edit photos like you — locally, in your browser.  
 Generate training datasets from RAW files, ingest Lightroom catalogs, train a model on your style, and predict Lightroom develop settings/XMP for new images.
 
 ![example_screen_home.png](./docs/example_screen_home.png)
@@ -27,12 +27,13 @@ Generate training datasets from RAW files, ingest Lightroom catalogs, train a mo
 ## Features
 
 - **Multipage Streamlit app** (Home, Previews, Ingest, Train, Predict)
-- **Preview generator**: Convert RAWs (CR3/CR2/DNG/NEF/ARW/RAF/RW2/ORF/SRW) to fast, model‑ready previews (JPEG/WebP). Background job with live progress and reclaim on refresh.
-- **Catalog ingest**: Drag‑and‑drop Lighroom `.lrcat` files to extract EXIF/XMP and internal develop settings into a clean CSV.
-- **Slider selection**: Train on only the sliders you care about (group and fine‑tune selectors).
-- **Training**: Image → slider regression (PyTorch). Saves model and logs training loss.
+- **Preview generator**: Convert RAWs (CR3/CR2/DNG/NEF/ARW/RAF/RW2/ORF/SRW) to fast, model‑ready previews (JPEG/WebP). Background job with live progress, reclaim on refresh, paginated thumbnail grid.
+- **Limit by CSV**: On Previews, optionally **generate only files referenced in a dataset CSV** (matches by filename stem, e.g., `IMG_0001.*`).
+- **Catalog ingest**: Drag‑and‑drop Lightroom `.lrcat` files to extract EXIF/XMP and internal develop settings into a clean CSV.
+- **Training‑set controls**: Train on only the sliders you care about (group + fine‑tune selectors) with a live table preview.
+- **Training**: Image → slider regression (PyTorch). Robust preview resolution (case‑insensitive, recursive, stem‑aware) and automatic skipping of missing files. Labeled loss chart + run metrics.
 - **Prediction (WIP)**: Upload images to get predicted slider values with the trained model.
-- **State that survives refresh**: App settings are saved to `.lr_ai_editor_state.json` so switching pages or refreshing won’t lose your inputs. Ingest also keeps the last results table during the session.
+- **State that survives refresh**: App settings are saved to a JSON file at the **repo root** (`.lr_ai_editor_state.json`).
 
 ---
 
@@ -56,6 +57,9 @@ Run the start script to create a virtual env, install dependencies, start the ap
 
 # Cross-platform Python launcher
 python3 run.py
+
+# Or run Streamlit directly
+streamlit run Home.py
 ```
 
 Then open your browser to the Streamlit app if it didn’t auto‑open.
@@ -66,12 +70,14 @@ Then open your browser to the Streamlit app if it didn’t auto‑open.
 
 ### Previews
 
-The **Previews** page allows you to convert RAW camera files into small RGB images for training/inference.
+Convert RAW camera files into small RGB images for training/inference.
 
-- **Input formats** CR3, CR2, DNG, NEF, ARW, RAF, RW2, ORF, SRW
+- **Input formats:** CR3, CR2, DNG, NEF, ARW, RAF, RW2, ORF, SRW
 - **Output formats:** JPEG or WebP, sRGB, 8‑bit
 - **Sizing:** `exact_224` (fast) or `short256_center224` (less distortion). You can also keep original size.
-- **Status:** background job with live progress, survives page switches, and is reclaimed after a browser refresh.
+- **CSV filter:** Optional **Limit to images listed in a dataset CSV** (matches by `name` column’s **stem**; extension/subfolders are ignored).
+- **Status:** Background job with live progress that survives page switches and is reclaimed after browser refresh.
+- **Gallery:** Paginated thumbnails from the output folder; auto‑refresh during active jobs.
 
 ![example_screen_previews](./docs/example_screen_previews.png)
 
@@ -80,7 +86,7 @@ The **Previews** page allows you to convert RAW camera files into small RGB imag
 Drag and drop one or more Lightroom `.lrcat` catalogs. Click **Run Ingest** to extract metadata and parse develop settings into a CSV suitable for training.
 
 - Filters: flagged, date range, color label (local filter for “edited”).  
-- Keeps the **last opened results table** in memory so switching pages doesn’t lose it.
+- Always shows the **current dataset CSV** located at your configured **Output CSV path** (path + row count + preview table).
 
 ![example_screen_ingest](./docs/example_screen_ingest.png)
 
@@ -89,7 +95,9 @@ Drag and drop one or more Lightroom `.lrcat` catalogs. Click **Run Ingest** to e
 Train a model using your CSV and previews. Choose which sliders to include via **group** and **fine‑tune** selectors. A preview table shows only the filename + selected sliders so you can verify what will be used.
 
 - **Only `exposure`** is treated as a floating‑point value (display as `0.00`). All other sliders are integer‑valued.
-- The model outputs one value per selected slider in the exact order shown.
+- **Data sanity:** Training uses an existence‑aware dataset that resolves previews **recursively** and **case‑insensitively** by **stem** (e.g., `IMG_0001.CR3` → `IMG_0001.jpg`) and **skips missing previews**.
+- **Training data summary:** Clear metrics (Rows in CSV, Previews, Usable) and a thumbnail grid of usable previews.
+- **Run metrics:** Duration, epochs, samples used, final loss with delta, and an approximate throughput (images/sec). Labeled loss chart (Epoch vs Training Loss).
 
 ![example_screen_train](./docs/example_screen_train.png)
 
@@ -131,7 +139,7 @@ python -m modules.train \
   --sliders "temperature,tint,exposure,contrast,whites,highlights,shadows,blacks"
 ```
 
-> Tip: `--sliders` is a comma‑separated list of **friendly names** (see below).  
+> Tip: `--sliders` is a comma‑separated list of **friendly names** (see [`modules/sliders.py`](./modules/sliders.py)).  
 > The order given is the output order the model learns.
 
 ---
@@ -139,8 +147,8 @@ python -m modules.train \
 ## Troubleshooting
 
 **rawpy (LibRaw) install**
-- On macOS with Homebrew: `brew install libraw` (then `pip install rawpy`)
-- On Linux: ensure `libraw`/image codecs are present via your package manager
+- macOS (Homebrew): `brew install libraw` (then `pip install rawpy`)
+- Linux: ensure `libraw`/image codecs are present via your package manager
 - Windows: use prebuilt wheels if available; otherwise install Visual C++ Build Tools
 
 **Exempi / Python XMP Toolkit**
@@ -148,26 +156,27 @@ python -m modules.train \
 - Linux: `apt install exempi` (or your distro equivalent)
 - Windows: see the XMP Toolkit docs for packaged libs or build steps
 
-**Streamlit multipage quirks**
-- Page titles come from filenames. We use numeric prefixes (`1_`, `2_`, …) to control order.
-- Only the first page can set `st.set_page_config(...)` (we do this in `Home.py`).
+**Streamlit runtime warnings**
+- If you see messages like _“missing ScriptRunContext / Session state does not function / No runtime found”_, they typically come from **PyTorch DataLoader workers** (separate processes).  
+  **Fix:** set `num_workers=0` (and `persistent_workers=False`) in training.
+- Launch the app with `streamlit run Home.py` (not `python Home.py`).
 
-**Previews job visibility**
-- The background job is tracked in‑process and **reclaimed after browser refresh**.
-- If you restart the server, the job registry resets (by design). You’ll still see completed previews in the gallery.
+**Persistent settings file**
+- Settings are saved at the repo root: `.lr_ai_editor_state.json`.  
+  Add to `.gitignore` if you don’t want to commit it.
 
 ---
 
 ## Notes on Lightroom catalogs
 
-This project uses [Lightroom‑SQL‑tools](https://github.com/fdenivac/Lightroom-SQL-tools) to read `.lrcat` files (they're essentially just SQLite databases). From exploration, the tables relevant to photo editing are:
+This project uses [Lightroom‑SQL‑tools](https://github.com/fdenivac/Lightroom-SQL-tools) to read `.lrcat` files (they're SQLite databases). From exploration, the tables relevant to photo editing are:
 
 1. **Adobe_AdditionalMetadata**  
    `xmp` (TEXT) – full XMP sidecar XML per image. Currently, not much is done with this, and support for parsing it may be removed to allow us to drop the dependency on Exempi.
 2. **Adobe_imageDevelopSettings**  
-   Numeric flags and a Lua‑like text column mirroring Camera Raw Settings that often **isn’t** in XMP depending on Lightroom settings. We currently retrieve/parse this text column directly, since Lightroom‑SQL‑tools doesn’t expose everything yet and Lua objects aren't natively supported in python. This is where the majority of internal Lightroom slier data is hidden.
+   Numeric flags and a Lua‑like text column mirroring Camera Raw Settings that often **isn’t** in XMP depending on Lightroom settings. We retrieve/parse this text column directly since Lightroom‑SQL‑tools doesn’t expose everything yet and Lua objects aren't natively supported in Python. This is where the majority of internal Lightroom **slider** data is hidden.
 3. **AgHarvestedExifMetadata**  
-   Aperture, shutter, ISO, camera model, date parts, etc...
+   Aperture, shutter, ISO, camera model, date parts, etc.
 
 See:
   - [current list of trainable sliders](./modules/sliders.py)
@@ -185,9 +194,12 @@ Run `pytest` to execute tests under [`tests/`](./tests/).
 
 ## Roadmap
 
+- Debounce persisted state changes
+- Show epoch progression in UI
+- Graceful shutdown from CLI
 - Validation split + early stopping during training
 - Per‑slider normalization & image normalization/augmentation
 - Model metadata (slider order, normalization stats) saved alongside the `.pt`
-- Export predicted sliders
+- Export predicted sliders / XMP sidecars
 - GPU selection & mixed precision
 - Persist preview job metadata to disk (optional) to reclaim after server restarts
