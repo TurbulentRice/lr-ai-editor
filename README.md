@@ -112,7 +112,6 @@ source .venv/bin/activate
 
 python -m modules.ingest \
   --catalog /data/raw/catalog.lrcat \
-  --previews /data/previews \
   --out_csv /data/dataset/sliders.csv \
   --criteria "flag=flagged,colorlabel=green"
 ```

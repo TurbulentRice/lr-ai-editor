@@ -20,7 +20,6 @@ def main():
     # Sidebar controls (persisted defaults)
     _ing = state.get("Ingest", {})
     catalog_files = st.sidebar.file_uploader("Lightroom .lrcat file(s)", type=["lrcat"], accept_multiple_files=True)
-    previews_dir = st.sidebar.text_input("Previews directory path", value=_ing.get("previews_dir", "data/previews"))
     out_csv = st.sidebar.text_input("Output CSV path", value=_ing.get("out_csv", "data/dataset/sliders.csv"))
 
     # Ingest criteria options
@@ -85,7 +84,7 @@ def main():
                     tmp.write(catalog_file.read())
                     tmp.flush()
                     tmp_path = Path(tmp.name)
-                    df = ingest(tmp_path, Path(previews_dir), Path(out_csv), criteria)
+                    df = ingest(tmp_path, Path(out_csv), criteria)
                     # Locally filter for edited images since </> operators aren't supported for modcount
                     if edited and "modcount" in df.columns:
                         df = df[df["modcount"].astype(int) > 0]
@@ -118,7 +117,6 @@ def main():
     state.update(
         "Ingest",
         {
-            "previews_dir": previews_dir,
             "out_csv": out_csv,
             "flagged": bool(flagged),
             "edited": bool(edited),
