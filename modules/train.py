@@ -14,6 +14,8 @@ from modules.model import ResNetRegressor
 import json
 from modules.sliders import SLIDER_NAME_MAP
 
+PREVIEW_EXTS = [".jpg", ".jpeg", ".webp", ".png"]
+
 
 torch.classes.__path__ = []  # Neutralizes the path inspection
 
@@ -76,14 +78,54 @@ class PreviewDataset(Dataset):
         if self.n_sliders == 0:
             raise ValueError("No sliders selected. Provide at least one slider to train on.")
 
+        # ------------------------------------------------------------
+        # Resolve preview file paths (recursive, case-insensitive, stem-aware)
+        # 1) Try exact join (previews_dir / name)
+        # 2) Try case-insensitive name match anywhere under previews_dir
+        # 3) Try matching by stem regardless of extension/subfolder
+        prev_dir = self.previews_dir
+        preview_paths = []
+        if prev_dir.exists():
+            for ext in PREVIEW_EXTS:
+                preview_paths.extend(prev_dir.rglob(f"*{ext}"))
+        name_map = {p.name.lower(): p for p in preview_paths}
+        stem_map = {}
+        for p in preview_paths:
+            key = p.stem.lower()
+            # prefer first seen; don't overwrite to keep deterministic selection
+            if key not in stem_map:
+                stem_map[key] = p
+
+        def _resolve_path(name: str) -> Path | None:
+            raw = Path(str(name))
+            # 1) exact join
+            p1 = prev_dir / raw
+            if p1.exists():
+                return p1
+            # 2) name/lower
+            p2 = name_map.get(raw.name.lower())
+            if p2 is not None and p2.exists():
+                return p2
+            # 3) stem
+            p3 = stem_map.get(raw.stem.lower())
+            if p3 is not None and p3.exists():
+                return p3
+            return None
+
+        self.df["__preview_path"] = self.df["name"].astype(str).apply(_resolve_path)
+        self.df["__exists"] = self.df["__preview_path"].apply(lambda p: p is not None and Path(p).exists())
+        missing_ct = int((~self.df["__exists"]).sum())
+        if missing_ct > 0:
+            print(f"[PreviewDataset] Skipping {missing_ct} row(s) with missing previews under {self.previews_dir}")
+        self.df = self.df[self.df["__exists"]].reset_index(drop=True)
+
     def __len__(self):
         return len(self.df)
 
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
-        # Load preview image
-        img_name = row["name"]
-        img_path = self.previews_dir / img_name
+        # Load resolved preview image path
+        img_path = Path(row["__preview_path"])  # resolved in __init__
         image = Image.open(img_path).convert("RGB")
         if self.transform:
             image = self.transform(image)
@@ -116,7 +158,8 @@ def train_model(
         Path(previews_dir),
         selected_friendly_sliders=selected_friendly_sliders,
     )
-    loader = DataLoader(ds, batch_size=batch_size, shuffle=True, num_workers=2)
+    # TODO: make num_workers configurable. Set to 0 for now to suppress streamlit runtime errors
+    loader = DataLoader(ds, batch_size=batch_size, shuffle=True, num_workers=0)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = ResNetRegressor(n_outputs=ds.n_sliders).to(device)
