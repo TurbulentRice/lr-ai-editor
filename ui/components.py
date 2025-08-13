@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List, Optional
+PREVIEW_EXTS = [".jpg", ".jpeg", ".webp", ".png"]
+from typing import Dict, List, Optional, Tuple
 import json
 import pandas as pd
 import streamlit as st
@@ -58,6 +59,92 @@ def build_preview_table(
             lambda d: float(d.get("sliders", {}).get(raw, 0.0)) if isinstance(d, dict) else 0.0
         )
     return out
+
+
+# ---------------------------------------------------------------------------
+# Training overview helper
+# ---------------------------------------------------------------------------
+
+def build_training_overview(
+    csv_path: str | Path,
+    previews_dir: str | Path,
+    selected_friendly: List[str],
+    limit: int = 200,
+    slider_name_map: Optional[Dict[str, str]] = None,
+) -> Tuple[pd.DataFrame, pd.DataFrame, Dict[str, int]]:
+    """
+    Return (usable_df, missing_df, counts) where:
+      - usable_df: rows whose preview exists, with filename + selected slider columns
+      - missing_df: rows whose preview file is missing (filename only)
+      - counts: {"total": int, "usable": int, "missing": int}
+    """
+    csv_path = Path(csv_path)
+    prev_dir = Path(previews_dir)
+    if not csv_path.exists():
+        raise FileNotFoundError(f"CSV not found: {csv_path}")
+
+    # Late import to avoid hard dependency when unused
+    if slider_name_map is None:
+        try:
+            from modules.train import SLIDER_NAME_MAP  # type: ignore
+            slider_name_map = SLIDER_NAME_MAP
+        except Exception:
+            slider_name_map = {}
+
+    usecols = ["name", "developsettings"]
+    df = pd.read_csv(csv_path, usecols=usecols)
+    if limit:
+        df = df.head(int(limit))
+
+    # Parse JSON safely
+    def _parse(js):
+        if isinstance(js, dict):
+            return js
+        if not isinstance(js, str) or js.strip() == "":
+            return {}
+        try:
+            return json.loads(js)
+        except Exception:
+            return {}
+
+    df["__parsed"] = df["developsettings"].apply(_parse)
+
+    # Build a recursive, case-insensitive index of previews (handles subfolders and extension changes)
+    if prev_dir.exists():
+        preview_paths = []
+        for ext in PREVIEW_EXTS:
+            preview_paths.extend(prev_dir.rglob(f"*{ext}"))
+        names_index = {p.name.lower() for p in preview_paths}
+        stems_index = {p.stem.lower() for p in preview_paths}
+    else:
+        names_index, stems_index = set(), set()
+
+    def _exists(name: str) -> bool:
+        raw = Path(str(name))
+        return raw.name.lower() in names_index or raw.stem.lower() in stems_index
+
+    df["__exists"] = df["name"].astype(str).apply(_exists)
+
+    # Build tables
+    present = df[df["__exists"]].copy()
+    missing = df[~df["__exists"]].copy()
+
+    usable = pd.DataFrame({"filename": present["name"].astype(str).values})
+    for friendly in selected_friendly:
+        raw = (slider_name_map or {}).get(friendly)
+        if not raw:
+            continue
+        usable[friendly] = present["__parsed"].apply(
+            lambda d: float(d.get("sliders", {}).get(raw, 0.0)) if isinstance(d, dict) else 0.0
+        )
+
+    missing_df = pd.DataFrame({"filename": missing["name"].astype(str).values})
+    counts = {
+        "total": int(len(df)),
+        "usable": int(len(present)),
+        "missing": int(len(missing)),
+    }
+    return usable, missing_df, counts
 
 
 # ---------------------------------------------------------------------------

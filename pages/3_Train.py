@@ -4,7 +4,7 @@ from pathlib import Path
 import streamlit as st
 
 from ui import state
-from ui.components import build_preview_table, render_grouped_slider_selector
+from ui.components import build_preview_table, render_grouped_slider_selector, build_training_overview, PREVIEW_EXTS
 from modules.train import train_model, SLIDER_NAME_MAP
 
 
@@ -28,7 +28,7 @@ def main():
     _tr = state.get("Train", {})
     csv_path = st.sidebar.text_input("CSV path", value=_tr.get("csv_path", "data/dataset/sliders.csv"))
     previews_dir = st.sidebar.text_input("Previews directory path", value=_tr.get("previews_dir", "data/previews"))
-    out_model = st.sidebar.text_input("Output model path", value=_tr.get("out_model", "model.pt"))
+    out_model = st.sidebar.text_input("Output model path", value=_tr.get("out_model", "data/models/model.pt"))
     epochs = st.sidebar.number_input("Epochs", min_value=1, value=int(_tr.get("epochs", 5)))
     batch_size = st.sidebar.number_input("Batch size", min_value=1, value=int(_tr.get("batch_size", 16)))
 
@@ -74,8 +74,8 @@ def main():
     )
     state.save_if_changed()
 
-    # Data preview expander
-    with st.expander("Preview included sliders", expanded=True):
+    # CSV data preview expander
+    with st.expander("Preview sliders", expanded=True):
         preview_rows = st.number_input(
             "Rows to preview",
             min_value=5,
@@ -112,6 +112,75 @@ def main():
                 st.dataframe(st.session_state["train_preview_df"], use_container_width=True)
             else:
                 st.info("Choose sliders and click Apply to preview.")
+
+    # Combined CSV/Preview summary of what will actually be used
+    with st.expander("Training data summary", expanded=True):
+        try:
+            usable_df, missing_df, counts = build_training_overview(csv_path, previews_dir, effective_sliders, limit=500)
+            # Count previews present in the folder (recursive)
+            prev_dir_path = Path(previews_dir)
+            previews_ct = 0
+            if prev_dir_path.exists():
+                for ext in PREVIEW_EXTS:
+                    previews_ct += sum(1 for _ in prev_dir_path.rglob(f"*{ext}"))
+
+            coverage = 0.0
+            if counts["total"] > 0:
+                coverage = round(100.0 * (counts["usable"] / counts["total"]), 1)
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Rows in CSV", counts["total"])
+            m2.metric("Previews in folder", previews_ct)
+            m3.metric("Usable (preview exists)", counts["usable"])
+            m4.metric("Coverage", f"{coverage}%")
+
+            # Thumbnail grid for usable rows (show first 24)
+            st.caption("Usable previews (first 24)")
+            # Build a mapping from stem/name to an actual preview path
+            preview_paths = []
+            if prev_dir_path.exists():
+                for ext in PREVIEW_EXTS:
+                    preview_paths.extend(prev_dir_path.rglob(f"*{ext}"))
+            name_map = {p.name.lower(): p for p in preview_paths}
+            stem_map = {p.stem.lower(): p for p in preview_paths}
+
+            filenames = [str(x) for x in usable_df["filename"].tolist()]
+            resolved = []
+            for fn in filenames:
+                key_name = Path(fn).name.lower()
+                key_stem = Path(fn).stem.lower()
+                p = name_map.get(key_name) or stem_map.get(key_stem)
+                if p is not None:
+                    resolved.append((fn, p))
+                if len(resolved) >= 24:
+                    break
+
+            if not resolved:
+                st.info("No matching preview files found to display.")
+            else:
+                n_cols = 6
+                rows = (len(resolved) + n_cols - 1) // n_cols
+                for r in range(rows):
+                    cols = st.columns(n_cols)
+                    for c in range(n_cols):
+                        i = r * n_cols + c
+                        if i < len(resolved):
+                            fn, p = resolved[i]
+                            with cols[c]:
+                                st.image(str(p), caption=Path(fn).name, use_container_width=True)
+
+            if counts["missing"] > 0:
+                show_missing = st.checkbox(
+                    "Show missing previews (in CSV but file not found)",
+                    value=False,
+                    key="train_show_missing_previews",
+                    help="These rows are in your CSV but the preview file was not found in the selected previews directory.",
+                )
+                if show_missing:
+                    st.dataframe(missing_df, use_container_width=True, height=200)
+        except FileNotFoundError:
+            st.info("CSV not found. Set a valid CSV path above.")
+        except Exception as e:
+            st.warning(f"Could not summarize CSV: {e}")
 
     # Train
     if st.sidebar.button("Train Model"):
