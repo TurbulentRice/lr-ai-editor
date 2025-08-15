@@ -285,3 +285,46 @@ def render_grouped_slider_selector(
     effective_sliders = [s for s in selected_sliders if s in sliders_in_selected_groups]
     container.caption(f"Using {len(effective_sliders)} sliders across {len(selected_groups)} group(s).")
     return selected_groups, selected_sliders, effective_sliders, groups
+
+
+# ---------------------------------------------------------------------------
+# New function: render_training_run
+# ---------------------------------------------------------------------------
+
+def render_training_run(run, default_chart_expanded=False):
+    st.header(f"Last run: {Path(run['model_path']).name}")
+
+    # Metrics row
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Duration", f"{run.get('duration', 0):.1f} s")
+    with col2:
+        st.metric("Epochs", str(run.get("epochs", 0)))
+    with col3:
+        st.metric("Samples used", str(run.get("samples_used", 0)))
+    with col4:
+        losses = run.get("losses", [])
+        final_loss = losses[-1] if losses else None
+        first_loss = losses[0] if losses else None
+        delta = None
+        if final_loss is not None and first_loss is not None:
+            delta = final_loss - first_loss
+        st.metric("Final loss", f"{final_loss:.4f}" if final_loss is not None else "N/A",
+                  delta=f"{delta:.4f}" if delta is not None else None)
+
+    # Loss chart
+    with st.expander("Loss over time", expanded=default_chart_expanded):
+        losses = run.get("losses", [])
+        if losses:
+            st.line_chart(losses)
+        else:
+            st.write("No loss data available.")
+
+    # Sliders used
+    with st.expander("Sliders used"):
+        slider_cols = run.get("slider_cols", [])
+        if slider_cols:
+            for slider in slider_cols:
+                st.write(f"- {slider}")
+        else:
+            st.write("No sliders data available.")

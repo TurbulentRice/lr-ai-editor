@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 import streamlit as st
+import altair as alt
 
 import pandas as pd
-import altair as alt
 import time
 
 from ui import state
-from ui.components import build_preview_table, render_grouped_slider_selector, build_training_overview, PREVIEW_EXTS
+from ui.components import build_preview_table, render_grouped_slider_selector, build_training_overview, PREVIEW_EXTS, render_training_run
 from modules.train import train_model, SLIDER_NAME_MAP
 
 
@@ -30,6 +30,11 @@ def main():
 
     # We want to know when the job is running
     is_training = st.session_state.get("train_run_active", False)
+
+    # Show most recent training run (persisted)
+    last_run_persisted = state.get("TrainLastRun")
+    if (not is_training) and last_run_persisted:
+        render_training_run(last_run_persisted, default_chart_expanded=False)
 
     # Sidebar inputs with persisted defaults
     _tr = state.get("Train", {})
@@ -90,7 +95,7 @@ def main():
             )
             t1 = time.perf_counter()
         duration_s = max(0.0, t1 - t0)
-        st.session_state["slider_cols"] = slider_cols  # preserve the exact training order for inference
+        # st.session_state["slider_cols"] = slider_cols  # preserve the exact training order for inference
         st.success(f"Training complete. Trained on {len(slider_cols)} sliders.")
 
         # Training metrics -----------------------------------------------------
@@ -144,11 +149,23 @@ def main():
         with st.expander("Sliders used", expanded=False):
             st.code(", ".join(slider_cols))
 
+        run_summary = {
+            "model_path": out_model,
+            "duration_s": duration_s,
+            "epochs_run": epochs_run,
+            "samples_used": samples_used,
+            "losses": losses,
+            "slider_cols": slider_cols,
+        }
+        st.session_state["train_last_run"] = run_summary
+        state.update("TrainLastRun", run_summary)
+        state.save_if_changed()
+
         # Clear the flag so expanders reopen next render
         st.session_state["train_run_active"] = False
 
     # CSV data preview expander
-    with st.expander("Preview sliders", expanded=True):
+    with st.expander("CSV slider data", expanded=True):
         preview_rows = st.number_input(
             "Rows to preview",
             min_value=5,
