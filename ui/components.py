@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Tuple
 import json
 import pandas as pd
 import streamlit as st
+import altair as alt
 
 # Common preview extensions used across the app
 PREVIEW_EXTS = [".jpg", ".jpeg", ".webp", ".png"]
@@ -288,43 +289,80 @@ def render_grouped_slider_selector(
 
 
 # ---------------------------------------------------------------------------
-# New function: render_training_run
+# Unified renderer for training results (used for both immediate and persisted display)
 # ---------------------------------------------------------------------------
 
-def render_training_run(run, default_chart_expanded=False):
-    st.header(f"Last run: {Path(run['model_path']).name}")
+def render_training_run(run: dict, default_expanded: bool = False):
+    """
+    Render metrics + loss chart + sliders for a completed training run
+    in a single collapsible section.
 
-    # Metrics row
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("Duration", f"{run.get('duration', 0):.1f} s")
-    with col2:
-        st.metric("Epochs", str(run.get("epochs", 0)))
-    with col3:
-        st.metric("Samples used", str(run.get("samples_used", 0)))
-    with col4:
-        losses = run.get("losses", [])
-        final_loss = losses[-1] if losses else None
-        first_loss = losses[0] if losses else None
-        delta = None
-        if final_loss is not None and first_loss is not None:
-            delta = final_loss - first_loss
-        st.metric("Final loss", f"{final_loss:.4f}" if final_loss is not None else "N/A",
-                  delta=f"{delta:.4f}" if delta is not None else None)
+    Expected keys in `run`:
+      - model_path (str)
+      - duration_s (float, seconds)
+      - epochs_run (int)
+      - samples_used (int | None)
+      - losses (List[float])
+      - slider_cols (List[str])
+    """
+    model_path = str(run.get("model_path", ""))
+    duration_s = float(run.get("duration_s", 0.0))
+    epochs_run = int(run.get("epochs_run", 0))
+    samples_used = run.get("samples_used")
+    losses = run.get("losses", []) or []
+    slider_cols = run.get("slider_cols", []) or []
 
-    # Loss chart
-    with st.expander("Loss over time", expanded=default_chart_expanded):
-        losses = run.get("losses", [])
+    with st.expander(f"Last run: {model_path}", expanded=default_expanded):
+        # Metrics row (Duration, Epochs, Samples used, Final loss w/ delta %)
+        m1, m2, m3, m4 = st.columns(4)
+        mins, secs = divmod(int(round(duration_s)), 60)
+        m1.metric("Duration", f"{mins:02d}:{secs:02d}")
+        m2.metric("Epochs", epochs_run)
+        if samples_used is not None:
+            m3.metric("Samples used", samples_used)
+        else:
+            m3.metric("Samples used", "-")
+
         if losses:
-            st.line_chart(losses)
-        else:
-            st.write("No loss data available.")
+            initial_loss = float(losses[0])
+            final_loss = float(losses[-1])
+            loss_drop = (initial_loss - final_loss)
+            loss_drop_pct = (100.0 * loss_drop / initial_loss) if initial_loss else None
 
-    # Sliders used
-    with st.expander("Sliders used"):
-        slider_cols = run.get("slider_cols", [])
-        if slider_cols:
-            for slider in slider_cols:
-                st.write(f"- {slider}")
+            final_str = f"{final_loss:.3f}"
+            if loss_drop_pct is not None:
+                delta_str = f"-{loss_drop:.3f} ({loss_drop_pct:.1f}%)"
+                m4.metric("Final loss", final_str, delta=delta_str)
+            else:
+                m4.metric("Final loss", final_str)
         else:
-            st.write("No sliders data available.")
+            m4.metric("Final loss", "-")
+
+        # Throughput caption (images/sec)
+        if samples_used and duration_s > 0 and epochs_run > 0:
+            total_images = samples_used * epochs_run
+            throughput = total_images / duration_s
+            st.caption(f"Approx. throughput: {throughput:.1f} images/sec")
+
+        # Loss chart (Altair)
+        if losses:
+            loss_df = pd.DataFrame({"epoch": list(range(1, len(losses) + 1)), "loss": losses})
+            chart = (
+                alt.Chart(loss_df)
+                .mark_line(point=True)
+                .encode(
+                    x=alt.X("epoch:Q", title="Epoch"),
+                    y=alt.Y("loss:Q", title="Training Loss", scale=alt.Scale(zero=False)),
+                )
+                .properties(title="Training Loss per Epoch")
+            )
+            st.altair_chart(chart, use_container_width=True)
+        else:
+            st.info("No loss history for this run.")
+
+        # Sliders used (inline)
+        st.markdown("**Sliders used**")
+        if slider_cols:
+            st.code(", ".join(slider_cols))
+        else:
+            st.caption("No sliders recorded for this run.")
