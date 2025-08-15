@@ -4,15 +4,17 @@ Lightweight training script for Lightroom slider-prediction model.
 """
 from pathlib import Path
 import pandas as pd
+import numpy as np
 from PIL import Image
 import torch
 from torch import nn
 from torch.utils.data import Dataset, DataLoader
 import torchvision.transforms as T
 from typing import Tuple, List
-from modules.model import ResNetRegressor
 import json
+from modules.model import ResNetRegressor
 from modules.sliders import SLIDER_NAME_MAP
+from modules.transforms import get_preprocess_transform, IMAGENET_MEAN, IMAGENET_STD
 
 PREVIEW_EXTS = [".jpg", ".jpeg", ".webp", ".png"]
 
@@ -44,12 +46,10 @@ class PreviewDataset(Dataset):
         """
         self.df = pd.read_csv(csv_path, usecols=["name", "developsettings"])
         self.previews_dir = Path(previews_dir)
-        self.transform = transform or T.Compose(
-            [
-                T.Resize((224, 224)),
-                T.ToTensor(),
-                # optionally: T.Normalize(mean, std)
-            ]
+        self.transform = transform or get_preprocess_transform(
+            size=224,
+            mean=IMAGENET_MEAN,
+            std=IMAGENET_STD,
         )
 
         # Ensure required columns exist
@@ -126,7 +126,8 @@ class PreviewDataset(Dataset):
         row = self.df.iloc[idx]
         # Load resolved preview image path
         img_path = Path(row["__preview_path"])  # resolved in __init__
-        image = Image.open(img_path).convert("RGB")
+        with Image.open(img_path) as im:
+            image = im.convert("RGB").copy()
         if self.transform:
             image = self.transform(image)
 
@@ -138,6 +139,18 @@ class PreviewDataset(Dataset):
         sliders = torch.tensor(slider_vals, dtype=torch.float32)
         return image, sliders
 
+
+class _NormWrapper(Dataset):
+    def __init__(self, base_ds, means, stds):
+        self.base_ds = base_ds
+        self.means = torch.tensor(means, dtype=torch.float32)
+        self.stds = torch.tensor(stds, dtype=torch.float32)
+    def __len__(self): return len(self.base_ds)
+    def __getitem__(self, idx):
+        img, sliders = self.base_ds[idx]
+        sliders_norm = (sliders - self.means) / (self.stds + 1e-8)
+        return img, sliders_norm
+    
 
 def train_model(
     csv_path: str,
@@ -158,11 +171,22 @@ def train_model(
         Path(previews_dir),
         selected_friendly_sliders=selected_friendly_sliders,
     )
-    # TODO: make num_workers configurable. Set to 0 for now to suppress streamlit runtime errors
+    
+    slider_vals_matrix = []
+    for _, sliders in ds:
+        slider_vals_matrix.append(sliders.numpy())
+    arr = np.vstack(slider_vals_matrix)
+    means = arr.mean(axis=0).tolist()
+    stds = arr.std(axis=0).tolist()
+    mins = arr.min(axis=0).tolist()
+    maxs = arr.max(axis=0).tolist()
+    
+    # zscore normalization for training targets
+    ds = _NormWrapper(ds, means, stds)
     loader = DataLoader(ds, batch_size=batch_size, shuffle=True, num_workers=0)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = ResNetRegressor(n_outputs=ds.n_sliders).to(device)
+    model = ResNetRegressor(n_outputs=ds.base_ds.n_sliders).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     criterion = nn.MSELoss()
     losses = []
@@ -187,14 +211,34 @@ def train_model(
         losses.append(avg_loss)
         print(f"Epoch {epoch}/{epochs} - Loss: {avg_loss:.4f}")
 
-    # Save final model checkpoint
+    # Save final model checkpoint with metadata package
     out_path = Path(out_model_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    torch.save(model.state_dict(), str(out_path))
+
+    metadata = {
+        "slider_friendly": ds.base_ds.slider_friendly,
+        "preprocess": {
+            "size": 224,
+            "mean": IMAGENET_MEAN,
+            "std": IMAGENET_STD,
+        },
+        "target_norm": {
+            "type": "zscore",
+            "mean": means,
+            "std": stds,
+            "min": mins,
+            "max": maxs,
+            "epsilon": 1e-8,
+            "index_map": {name: idx for idx, name in enumerate(selected_friendly_sliders or ds.base_ds.slider_friendly)},
+        },
+        "app_version": "0.1.0",
+    }
+
+    torch.save({"weights": model.state_dict(), "metadata": metadata}, str(out_path))
     print(f"Model saved to {out_path}")
 
     # Return friendly slider names in the exact order used for training
-    return model, losses, ds.slider_friendly
+    return model, losses, ds.base_ds.slider_friendly
 
 
 """

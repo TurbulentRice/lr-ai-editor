@@ -2,13 +2,19 @@ from __future__ import annotations
 
 from pathlib import Path
 import streamlit as st
+import altair as alt
 
 import pandas as pd
-import altair as alt
 import time
 
 from ui import state
-from ui.components import build_preview_table, render_grouped_slider_selector, build_training_overview, PREVIEW_EXTS
+from ui.components import (
+    build_preview_table,
+    render_grouped_slider_selector,
+    build_training_overview,
+    PREVIEW_EXTS,
+    render_training_run,
+)
 from modules.train import train_model, SLIDER_NAME_MAP
 
 
@@ -30,6 +36,11 @@ def main():
 
     # We want to know when the job is running
     is_training = st.session_state.get("train_run_active", False)
+
+    # Show most recent training run (persisted)
+    last_run_persisted = state.get("TrainLastRun")
+    if (not is_training) and last_run_persisted:
+        render_training_run(last_run_persisted, default_expanded=False)
 
     # Sidebar inputs with persisted defaults
     _tr = state.get("Train", {})
@@ -90,10 +101,8 @@ def main():
             )
             t1 = time.perf_counter()
         duration_s = max(0.0, t1 - t0)
-        st.session_state["slider_cols"] = slider_cols  # preserve the exact training order for inference
         st.success(f"Training complete. Trained on {len(slider_cols)} sliders.")
 
-        # Training metrics -----------------------------------------------------
         # Compute dataset size actually used (row-based usable) to estimate throughput
         try:
             usable_df, _, _counts = build_training_overview(csv_path, previews_dir, effective_sliders, limit=0)
@@ -101,54 +110,28 @@ def main():
         except Exception:
             samples_used = None
         epochs_run = int(len(losses))
-        initial_loss = float(losses[0]) if losses else float("nan")
-        final_loss = float(losses[-1]) if losses else float("nan")
-        loss_drop = (initial_loss - final_loss) if (losses and initial_loss == initial_loss) else None
-        loss_drop_pct = (100.0 * loss_drop / initial_loss) if (loss_drop is not None and initial_loss) else None
 
-        # Metrics row (Duration, Epochs, Samples used, Final loss w/ delta)
-        m1, m2, m3, m4 = st.columns(4)
-        # Duration pretty format
-        mins, secs = divmod(int(round(duration_s)), 60)
-        m1.metric("Duration", f"{mins:02d}:{secs:02d}")
-        m2.metric("Epochs", epochs_run)
-        if samples_used is not None:
-            m3.metric("Samples used", samples_used)
-        else:
-            m3.metric("Samples used", "–")
-        if loss_drop is not None and loss_drop_pct is not None:
-            m4.metric("Final loss", f"{final_loss:,.0f}", delta=f"-{loss_drop:,.0f} ({loss_drop_pct:.1f}%)")
-        else:
-            m4.metric("Final loss", f"{final_loss:,.0f}")
+        # Build a summary and render via the unified renderer (expanded now)
+        run_summary = {
+            "model_path": out_model,
+            "duration_s": duration_s,
+            "epochs_run": epochs_run,
+            "samples_used": samples_used,
+            "losses": losses,
+            "slider_cols": slider_cols,
+        }
+        render_training_run(run_summary, default_expanded=True)
 
-        # Approx throughput caption
-        if samples_used and duration_s > 0:
-            total_images = samples_used * max(1, epochs_run)
-            throughput = total_images / duration_s
-            st.caption(f"Approx. throughput: {throughput:.1f} images/sec")
-
-        # Loss chart with labels ----------------------------------------------
-        loss_df = pd.DataFrame({"epoch": list(range(1, len(losses)+1)), "loss": losses})
-        chart = (
-            alt.Chart(loss_df)
-            .mark_line(point=True)
-            .encode(
-                x=alt.X("epoch:Q", title="Epoch"),
-                y=alt.Y("loss:Q", title="Training Loss", scale=alt.Scale(zero=False))
-            )
-            .properties(title="Training Loss per Epoch")
-        )
-        st.altair_chart(chart, use_container_width=True)
-
-        # Compact slider list (collapsed)
-        with st.expander("Sliders used", expanded=False):
-            st.code(", ".join(slider_cols))
+        # Persist for future pageloads and keep in session as well
+        st.session_state["train_last_run"] = run_summary
+        state.update("TrainLastRun", run_summary)
+        state.save_if_changed()
 
         # Clear the flag so expanders reopen next render
         st.session_state["train_run_active"] = False
 
     # CSV data preview expander
-    with st.expander("Preview sliders", expanded=True):
+    with st.expander("CSV slider data", expanded=True):
         preview_rows = st.number_input(
             "Rows to preview",
             min_value=5,
