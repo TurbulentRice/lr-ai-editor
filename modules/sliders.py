@@ -8,7 +8,7 @@ def postprocess(slider_name: str, value: float, target_norm_meta: dict | None):
                 mean = mean_list[idx]
                 std = std_list[idx]
                 value = value * std + mean
-    spec = SLIDER_SPECS.get(slider_name)
+    spec = _get_spec_for_name(slider_name)
     if spec:
         if spec.get("min") is not None:
             value = max(spec["min"], value)
@@ -18,12 +18,33 @@ def postprocess(slider_name: str, value: float, target_norm_meta: dict | None):
             value = round(value / spec["step"]) * spec["step"]
     return float(value)
 
+def _get_spec_for_name(slider_name: str):
+    # Direct lookup first
+    spec = SLIDER_SPECS.get(slider_name)
+    if spec is not None:
+        return spec
+    try:
+        inv = {v: k for k, v in SLIDER_NAME_MAP.items()}
+        mapped = SLIDER_NAME_MAP.get(slider_name)
+        if isinstance(mapped, str):
+            spec = SLIDER_SPECS.get(mapped)
+            if spec is not None:
+                return spec
+        mapped_back = inv.get(slider_name)
+        if isinstance(mapped_back, str):
+            spec = SLIDER_SPECS.get(mapped_back)
+            if spec is not None:
+                return spec
+    except Exception:
+        pass
+    return None
+
 
 SLIDER_SPECS = {
     # Primary
     "Temperature": {"min": 2000.0, "max": 50000.0, "step": 1.0},
     "Tint": {"min": -150.0, "max": 150.0, "step": 1.0},
-    "Exposure2012": {"min": -5.0, "max": 5.0, "step": 0.1},
+    "Exposure2012": {"min": -5.0, "max": 5.0, "step": 0.01},
     "Contrast2012": {"min": -100.0, "max": 100.0, "step": 1.0},
     "Whites2012": {"min": -100.0, "max": 100.0, "step": 1.0},
     "Highlights2012": {"min": -100.0, "max": 100.0, "step": 1.0},
