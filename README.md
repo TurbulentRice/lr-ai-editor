@@ -27,13 +27,12 @@ Generate training datasets from RAW files, ingest Lightroom catalogs, train a mo
 ## Features
 
 - **Multipage Streamlit app** (Home, Previews, Ingest, Train, Predict)
-- **Preview generator**: Convert RAWs (CR3/CR2/DNG/NEF/ARW/RAF/RW2/ORF/SRW) to fast, model‑ready previews (JPEG/WebP). Background job with live progress, reclaim on refresh, paginated thumbnail grid.
-- **Limit by CSV**: On Previews, optionally **generate only files referenced in a dataset CSV** (matches by filename stem, e.g., `IMG_0001.*`).
+- **Preview generator**: Convert RAWs to fast, model‑ready previews (JPEG/WebP). Background job with live progress, reclaim on refresh, paginated thumbnail grid.
+- **Limit by CSV**: On Previews, optionally **generate only files referenced in a dataset CSV** (matches by filename stem).
 - **Catalog ingest**: Drag‑and‑drop Lightroom `.lrcat` files to extract EXIF/XMP and internal develop settings into a clean CSV.
 - **Training‑set controls**: Train on only the sliders you care about (group + fine‑tune selectors) with a live table preview.
-- **Training**: Image → slider regression (PyTorch). Robust preview resolution (case‑insensitive, recursive, stem‑aware) and automatic skipping of missing files. Labeled loss chart + run metrics.
-- **Prediction (WIP)**: Upload images to get predicted slider values with the trained model.
-- **State that survives refresh**: App settings are saved to a JSON file at the **repo root** (`.lr_ai_editor_state.json`).
+- **Training**: Image → slider regression (PyTorch). Robust preview resolution and automatic skipping of missing files. Labeled loss chart + run metrics.
+- **Prediction:** Upload images to get predicted develop settings from a trained model. Saved as CSV, viewable in-app.
 
 ---
 
@@ -62,7 +61,7 @@ python3 run.py
 streamlit run Home.py
 ```
 
-Then open your browser to the Streamlit app if it didn’t auto‑open.
+Then open your browser to the Streamlit app if it didn’t auto‑open. App state (e.g. paths, sliders, last prediction) is saved across sessions.
 
 ---
 
@@ -72,12 +71,11 @@ Then open your browser to the Streamlit app if it didn’t auto‑open.
 
 Convert RAW camera files into small RGB images for training/inference.
 
-- **Input formats:** CR3, CR2, DNG, NEF, ARW, RAF, RW2, ORF, SRW
-- **Output formats:** JPEG or WebP, sRGB, 8‑bit
-- **Sizing:** `exact_224` (fast) or `short256_center224` (less distortion). You can also keep original size.
-- **CSV filter:** Optional **Limit to images listed in a dataset CSV** (matches by `name` column’s **stem**; extension/subfolders are ignored).
-- **Status:** Background job with live progress that survives page switches and is reclaimed after browser refresh.
-- **Gallery:** Paginated thumbnails from the output folder; auto‑refresh during active jobs.
+- Supports common RAW formats (CR3, CR2, DNG, NEF, ARW, RAF, RW2, ORF, SRW)
+- Outputs JPEG or WebP, sRGB, 8‑bit.
+- Sizing options include fast and less distortion modes, or original size.
+- Optional CSV filter to limit previews to images listed in a dataset CSV (matches by filename stem).
+- Runs as a background job with live progress and paginated thumbnail gallery.
 
 ![example_screen_previews](./docs/example_screen_previews.png)
 
@@ -85,8 +83,8 @@ Convert RAW camera files into small RGB images for training/inference.
 
 Drag and drop one or more Lightroom `.lrcat` catalogs. Click **Run Ingest** to extract metadata and parse develop settings into a CSV suitable for training.
 
-- Filters: flagged, date range, color label (local filter for “edited”).  
-- Always shows the **current dataset CSV** located at your configured **Output CSV path** (path + row count + preview table).
+- Filters include flagged, date range, and color label.
+- Displays the current dataset CSV at the configured output path with row count and preview table.
 
 ![example_screen_ingest](./docs/example_screen_ingest.png)
 
@@ -94,17 +92,24 @@ Drag and drop one or more Lightroom `.lrcat` catalogs. Click **Run Ingest** to e
 
 Train a model using your CSV and previews. Choose which sliders to include via **group** and **fine‑tune** selectors. A preview table shows only the filename + selected sliders so you can verify what will be used.
 
-- **Only `exposure`** is treated as a floating‑point value (display as `0.00`). All other sliders are integer‑valued.
-- **Data sanity:** Training uses an existence‑aware dataset that resolves previews **recursively** and **case‑insensitively** by **stem** (e.g., `IMG_0001.CR3` → `IMG_0001.jpg`) and **skips missing previews**.
-- **Training data summary:** Clear metrics (Rows in CSV, Previews, Usable) and a thumbnail grid of usable previews.
-- **Run metrics:** Duration, epochs, samples used, final loss with delta, and an approximate throughput (images/sec). Labeled loss chart (Epoch vs Training Loss).
+- Only the `exposure` slider is treated as a floating‑point value (displayed with two decimals). All other sliders are integer-valued and clamped within valid ranges.
+- Training uses an existence-aware dataset that resolves previews recursively and case-insensitively by filename stem, skipping missing previews.
+- Provides clear metrics (rows in CSV, previews, usable) and a thumbnail grid of usable previews.
+- Run metrics include duration, epochs, samples used, final loss with delta, and approximate throughput (images/sec). A labeled loss chart (Epoch vs Training Loss) is shown.
 
 ![example_screen_train](./docs/example_screen_train.png)
 
-### Predict (WIP)
+### Predict
 
-Upload images and run inference to predict slider values with your trained model.  
-The goal is to generate XMP sidecars and/or internal Lightroom develop settings so your images open pre‑edited in your style.
+Upload new, unedited training images and use your trained model to predict Lightroom develop sliders.
+
+- Predictions are saved to a CSV file (default: `data/predictions/prediction.csv`) and persist across reloads
+- UI includes live progress bar and feedback messages during inference
+- Supports normalized-to-slider value restoration using `min`, `max`, `step`, and rounding logic
+- Full predictions table view with image name and slider values
+- Input model must be a `.pt` package with embedded metadata
+
+![example_screen_predict](./docs/example_screen_predict.png)
 
 ---
 
@@ -195,11 +200,10 @@ Run `pytest` to execute tests under [`tests/`](./tests/).
 ## Roadmap
 
 - Debounce persisted state changes
-- Show epoch progression in UI
-- Graceful shutdown from CLI
+- Possible bug with GPU selection
 - Validation split + early stopping during training
-- Per‑slider normalization & image normalization/augmentation
-- Model metadata (slider order, normalization stats) saved alongside the `.pt`
-- Export predicted sliders / XMP sidecars
-- GPU selection & mixed precision
-- Persist preview job metadata to disk (optional) to reclaim after server restarts
+- Image augmentation
+- Mixed precision
+- Apply predictions to Lightroom catalog (.lrcat)
+- Enhanced prediction formatting/export options
+- Support for batched inference across directories
