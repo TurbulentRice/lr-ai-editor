@@ -1,0 +1,26 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="200"
+  height="200"
+  viewBox="0 0 200 200"
+>
+  <!-- Background circle -->
+  <circle cx="100" cy="100" r="95" fill="#2B2D42" stroke="#8D99AE" stroke-width="5"/>
+
+  <!-- Camera body -->
+  <rect x="30" y="50" width="140" height="100" rx="10" ry="10" fill="#EDF2F4" stroke="#2B2D42" stroke-width="4"/>
+
+  <!-- Top “viewfinder” bump -->
+  <rect x="70" y="30" width="60" height="30" rx="5" ry="5" fill="#D90429" stroke="#2B2D42" stroke-width="3"/>
+
+  <!-- Lens circle -->
+  <circle cx="100" cy="100" r="35" fill="#8D99AE" stroke="#2B2D42" stroke-width="4"/>
+
+  <!-- Inner lens highlight -->
+  <circle cx="100" cy="100" r="20" fill="#EDF2F4" opacity="0.5"/>
+
+  <!-- “AI” letters inside the lens -->
+  <text x="100" y="110" font-family="Verdana, sans-serif" font-size="36" text-anchor="middle" fill="#2B2D42" font-weight="bold">
+    AI
+  </text>
+</svg>

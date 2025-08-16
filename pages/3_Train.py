@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 import streamlit as st
-import altair as alt
 
 import pandas as pd
 import time
@@ -17,6 +16,8 @@ from ui.components import (
 )
 from modules.train import train_model, SLIDER_NAME_MAP
 
+
+st.set_page_config(page_title="Train", page_icon="logo.svg", layout="wide")
 
 @st.cache_resource
 def run_train_model(

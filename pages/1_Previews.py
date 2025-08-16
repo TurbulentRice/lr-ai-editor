@@ -8,6 +8,8 @@ from ui import state
 from ui.components import render_thumbnail_grid
 
 
+st.set_page_config(page_title="Previews", page_icon="logo.svg", layout="wide")
+
 def main():
     state.ensure()
 

@@ -8,8 +8,7 @@ from modules.previews import find_active_job, is_job_active
 from ui.components import render_thumbnail_grid
 
 
-# Configure the app (only honored in the first script Streamlit runs)
-st.set_page_config(page_title="Lightroom AI Editor", page_icon="🎞️", layout="wide")
+st.set_page_config(page_title="Lightroom AI Editor", page_icon="logo.svg", layout="wide")
 
 # Load persisted settings
 state.ensure()
@@ -90,7 +89,7 @@ with right:
         **Train**  
         • CSV: `{trn.get('csv_path', 'data/dataset/sliders.csv')}`  
         • Previews dir: `{trn.get('previews_dir', 'data/previews')}`  
-        • Model out: `{trn.get('out_model', 'model.pt')}` • Epochs: `{trn.get('epochs', 5)}` • Batch: `{trn.get('batch_size', 16)}`
+        • Model out: `{trn.get('out_model', 'data/models/model.pt')}` • Epochs: `{trn.get('epochs', 5)}` • Batch: `{trn.get('batch_size', 16)}`
         """,
         help="Edit these on their respective pages. Settings persist across reloads.",
     )

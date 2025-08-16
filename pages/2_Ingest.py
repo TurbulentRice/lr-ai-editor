@@ -10,6 +10,8 @@ from ui import state
 from modules.ingest import ingest
 
 
+st.set_page_config(page_title="Ingest", page_icon="logo.svg", layout="wide")
+
 def main():
     state.ensure()
     st.title("Catalog Ingest")
