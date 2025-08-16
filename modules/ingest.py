@@ -16,7 +16,7 @@ from modules.xmp import decode_xmp_blob
 # ---------------------------------------
 # Ingest function
 # ---------------------------------------
-def ingest(catalog: Path, out_csv: Path, criteria: str = ""):
+def ingest(catalog: Path, out_csv: Path = None, criteria: str = ""):
     lrtools_columns = "id, name, datecapt, camera, lens, iso, focal, aperture, speed, modcount, xmp"
 
     # Use Lightroom-SQL-tools to extract XMP and metadata
@@ -78,7 +78,8 @@ def ingest(catalog: Path, out_csv: Path, criteria: str = ""):
         data.append(values)
 
     df = pd.DataFrame(data)
-    df.to_csv(out_csv, index=False)
+    if out_csv is not None:
+        df.to_csv(out_csv, index=False)
 
     return df
 
