@@ -5,9 +5,9 @@ import torchvision.transforms as T
 from modules.model import ResNetRegressor
 from modules.transforms import get_preprocess_transform, IMAGENET_MEAN, IMAGENET_STD
 from modules.sliders import postprocess
-from typing import Callable, Optional, List, Tuple
+from typing import Callable, Optional, List, Tuple, Any
 
-def inspect_model_file(model_path: str) -> dict:
+def inspect_model_file(model_path: str) -> dict[str, Any]:
     p = Path(model_path)
     if not p.exists():
         return {"exists": False}
