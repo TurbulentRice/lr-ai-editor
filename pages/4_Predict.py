@@ -3,17 +3,17 @@ from __future__ import annotations
 from pathlib import Path
 from datetime import datetime
 import streamlit as st
-import torch
 import time
 import pandas as pd
 
 from ui import state
-from modules.predict import predict_sliders
+from modules.predict import predict_sliders, build_model, inspect_model_file
 
+
+st.set_page_config(page_title="Predict", page_icon="logo.svg", layout="wide")
 
 @st.cache_resource
 def _load_model_cached(model_path: str, n_out: int, device_key: str):
-    from modules.predict import build_model
     model, dev = build_model(model_path, n_out, device_key)
     return model, str(dev)
 
@@ -21,51 +21,7 @@ def _load_model_cached(model_path: str, n_out: int, device_key: str):
 # Cached inspector for model file
 @st.cache_data
 def _inspect_model_file(model_path: str, cache_buster: float = 0.0):
-    p = Path(model_path)
-    if not p.exists():
-        return {"exists": False}
-    info = {"exists": True, "size": p.stat().st_size, "mtime": p.stat().st_mtime}
-    try:
-        obj = torch.load(str(p), map_location="cpu")
-        if isinstance(obj, dict) and "weights" in obj and "metadata" in obj:
-            info["package"] = True
-            meta = obj.get("metadata", {}) or {}
-            info["metadata"] = meta  # keep raw for detailed view (safe dict)
-            # sliders
-            sliders = meta.get("slider_friendly")
-            if isinstance(sliders, list):
-                info["num_sliders"] = len(sliders)
-                info["slider_list"] = sliders
-            # preprocess
-            pp = meta.get("preprocess", {}) or {}
-            if pp:
-                info["preprocess"] = pp
-            # normalization presence
-            tn = meta.get("target_norm")
-            info["has_target_norm"] = bool(tn)
-            # app version if present
-            if isinstance(meta, dict) and "app_version" in meta:
-                info["app_version"] = meta["app_version"]
-        else:
-            info["raw_state_dict"] = True
-            # Best-effort guess for output size
-            if isinstance(obj, dict):
-                n_out = None
-                for k, v in obj.items():
-                    try:
-                        if isinstance(v, torch.Tensor):
-                            if v.ndim == 2:
-                                n_out = int(v.shape[0])
-                            elif v.ndim == 1:
-                                n_out = int(v.shape[0])
-                    except Exception:
-                        pass
-                if n_out is not None:
-                    info["guessed_n_outputs"] = n_out
-        return info
-    except Exception as e:
-        info["error"] = str(e)
-        return info
+    return inspect_model_file(model_path)
 
 
 def main():
